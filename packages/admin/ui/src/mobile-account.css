@@ -1,0 +1,8 @@
+/* Keep account actions accessible when navigation becomes horizontal. */
+@media(max-width:800px){
+  .app-shell .sidebar .sidebar-bottom{display:block;padding-top:12px}
+  .app-shell .sidebar .sidebar-bottom .connection{display:none}
+  .app-shell .sidebar .account{border:0;padding-top:0;font-size:11px}
+  .app-shell .sidebar .account small{font-size:10px}
+  .app-shell .sidebar .account .text-button{font-size:11px}
+}

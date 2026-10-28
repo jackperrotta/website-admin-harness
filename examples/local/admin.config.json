@@ -1,0 +1,6 @@
+{
+  "schemaVersion": 1, "installationId": "fieldwork-local",
+  "business": {"name": "Fieldwork Studio", "initials": "FS"},
+  "site": {"id": "fieldwork", "name": "Main website", "origin": "https://fieldwork.example"},
+  "adminOrigin": "http://127.0.0.1:4391", "modules": ["work-queue"]
+}

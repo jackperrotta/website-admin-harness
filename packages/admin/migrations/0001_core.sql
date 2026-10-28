@@ -1,0 +1,10 @@
+PRAGMA foreign_keys = ON;
+CREATE TABLE users (id TEXT PRIMARY KEY, email TEXT NOT NULL UNIQUE, role TEXT NOT NULL CHECK(role IN ('owner','administrator','editor','analyst')), active INTEGER NOT NULL DEFAULT 1);
+CREATE TABLE login_tokens (digest TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id), expires_at INTEGER NOT NULL);
+CREATE TABLE sessions (digest TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id), expires_at INTEGER NOT NULL);
+CREATE TABLE auth_limits (key TEXT PRIMARY KEY, attempts INTEGER NOT NULL, expires_at INTEGER NOT NULL);
+CREATE TABLE leads (id TEXT PRIMARY KEY, site_id TEXT NOT NULL, name TEXT NOT NULL, email TEXT NOT NULL, message TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'new' CHECK(status IN ('new','contacted','closed')), source TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')));
+CREATE INDEX leads_site ON leads(site_id, created_at DESC);
+CREATE TABLE analytics_daily (site_id TEXT NOT NULL, day TEXT NOT NULL, views INTEGER NOT NULL, visitors INTEGER NOT NULL, enquiries INTEGER NOT NULL, PRIMARY KEY(site_id,day));
+CREATE TABLE settings (site_id TEXT PRIMARY KEY, notification_email TEXT NOT NULL DEFAULT '', revision INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE audit (id TEXT PRIMARY KEY, actor TEXT NOT NULL, action TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')));

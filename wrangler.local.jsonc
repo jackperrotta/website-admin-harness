@@ -1,0 +1,9 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "vitris-admin-local", "main": "examples/local/worker.ts",
+  "compatibility_date": "2026-09-01",
+  "assets": {"directory": "packages/admin/dist/client", "binding": "ASSETS", "not_found_handling": "single-page-application", "run_worker_first": true},
+  "d1_databases": [{"binding": "DB", "database_name": "vitris-admin-local", "database_id": "00000000-0000-0000-0000-000000000001", "migrations_dir": "packages/admin/migrations"}],
+  "r2_buckets": [{"binding": "ASSET_STORE", "bucket_name": "vitris-admin-local-assets"}],
+  "vars": {"MODE": "local"}, "workers_dev": false
+}
