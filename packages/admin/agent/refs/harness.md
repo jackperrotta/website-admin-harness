@@ -1,6 +1,6 @@
 # Harness data connection
 
-The harness exposes `vitris admin setup|status|verify`. Setup plans before applying, scaffolds this app through its packaged CLI, and records public connection metadata in the website without changing its forms or backend URL.
+Use `npx --yes @tryvitris/website-admin-harness@alpha setup --site WEBSITE --dir NEW_ADMIN --domain ADMIN_HOST --website HTTPS_ORIGIN --backend-origin HTTPS_BACKEND --tenant EXISTING_TENANT --plan`, review the plan, then repeat with `--apply` and a dedicated VITRIS_ADMIN_API_TOKEN in the environment. This scaffolds the admin, records public connection metadata, and prepares an ignored hashed backend grant without changing forms or the backend URL. Cloudflare provisioning, grant installation, authentication onboarding and deployment remain explicit. The backend must already implement the Vitris admin v1 API; older website-harness deployments may require a separate backend upgrade.
 
 `admin.config.json` may contain `backend: {provider: "vitris-harness", origin: "https://BACKEND", tenantId: "TENANT"}`. The Worker reads `HARNESS_API_TOKEN` from its secret environment. Never put that credential in a manifest, public asset, URL, browser request or source file.
 

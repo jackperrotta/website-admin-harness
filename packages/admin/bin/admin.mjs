@@ -12,8 +12,9 @@ const exists=async path=>access(path).then(()=>true,()=>false);
 function slug(value){if(!/^[a-z][a-z0-9-]{0,50}$/.test(value))throw new Error('Use a slug with lowercase letters, digits and hyphens (maximum 51 characters)');return value;}
 function email(value){if(typeof value!=='string'||value.length>254||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value))throw new Error('A valid email is required');return value.toLowerCase();}
 export async function run(args=process.argv.slice(2)) {
-  const {positionals,values:v}=parseArgs({args,allowPositionals:true,options:{dir:{type:'string'},name:{type:'string'},slug:{type:'string'},domain:{type:'string'},website:{type:'string'},email:{type:'string'},site:{type:'string'},plan:{type:'boolean'},apply:{type:'boolean'},from:{type:'string'},'backend-origin':{type:'string'},tenant:{type:'string'}}});
+  const {positionals,values:v}=parseArgs({args,allowPositionals:true,options:{dir:{type:'string'},name:{type:'string'},slug:{type:'string'},domain:{type:'string'},website:{type:'string'},email:{type:'string'},site:{type:'string'},plan:{type:'boolean'},apply:{type:'boolean'},from:{type:'string'},'backend-origin':{type:'string'},tenant:{type:'string'},'lead-write':{type:'boolean'}}});
   const command=positionals[0];const root=resolve(v.dir||'.');
+  if(command==='setup'){const {setup}=await import('./setup.mjs');return setup(v,{packageRoot,initialize:args=>run(['init',...args])});}
   if(command==='init'){
     if(!v.dir)throw new Error('init requires --dir for a new installation directory');
     if(await exists(root))throw new Error('Destination exists; choose a new directory to preserve existing work');
@@ -29,7 +30,7 @@ export async function run(args=process.argv.slice(2)) {
     }
     const version=(await read(join(packageRoot,'package.json'))).version;
     await mkdir(root,{recursive:true});
-    await save(join(root,'package.json'),{name:`${id}-admin`,private:true,type:'module',scripts:{dev:'wrangler dev --config wrangler.local.jsonc --port 4391',build:'wrangler deploy --dry-run --outdir dist',plan:'vitris-admin plan',doctor:'vitris-admin doctor','db:local':'wrangler d1 migrations apply admin-local --local --config wrangler.local.jsonc',deploy:'wrangler deploy'},dependencies:{'@vitris/admin':version},devDependencies:{wrangler:'^4.135.0'}});
+    await save(join(root,'package.json'),{name:`${id}-admin`,private:true,type:'module',scripts:{dev:'wrangler dev --config wrangler.local.jsonc --port 4391',build:'wrangler deploy --dry-run --outdir dist',plan:'vitris-admin plan',doctor:'vitris-admin doctor','db:local':'wrangler d1 migrations apply admin-local --local --config wrangler.local.jsonc',deploy:'wrangler deploy'},dependencies:{'@tryvitris/website-admin-harness':version},devDependencies:{wrangler:'^4.135.0'}});
     await save(join(root,'admin.config.json'),config);
     const {backend:productionBackend,...localConfig}=config;
     await save(join(root,'admin.local.json'),{...localConfig,installationId:`${id}-local`,adminOrigin:'http://127.0.0.1:4391'});
@@ -37,8 +38,8 @@ export async function run(args=process.argv.slice(2)) {
     if(v.from){settings.vars.AUTH_FROM=email(v.from);settings.send_email=[{name:'AUTH_EMAIL',allowed_sender_addresses:[settings.vars.AUTH_FROM]}];}
     await save(join(root,'wrangler.jsonc'),settings);
     await save(join(root,'wrangler.local.jsonc'),{...settings,name:`${id}-admin-local`,main:'worker.local.js',workers_dev:false,routes:[],vars:{MODE:'local'},send_email:[],d1_databases:[{binding:'DB',database_name:'admin-local',database_id:'00000000-0000-0000-0000-000000000001',migrations_dir:'./migrations'}],r2_buckets:[{binding:'ASSET_STORE',bucket_name:`${id}-admin-local-assets`}]});
-    await writeFile(join(root,'worker.js'),"import {createAdmin} from '@vitris/admin/worker';\nimport config from './admin.config.json';\nexport default createAdmin(config);\n");
-    await writeFile(join(root,'worker.local.js'),"import {createAdmin} from '@vitris/admin/worker';\nimport config from './admin.local.json';\nexport default createAdmin(config);\n");
+    await writeFile(join(root,'worker.js'),"import {createAdmin} from '@tryvitris/website-admin-harness/worker';\nimport config from './admin.config.json';\nexport default createAdmin(config);\n");
+    await writeFile(join(root,'worker.local.js'),"import {createAdmin} from '@tryvitris/website-admin-harness/worker';\nimport config from './admin.local.json';\nexport default createAdmin(config);\n");
     await cp(join(packageRoot,'dist/client'),join(root,'public'),{recursive:true});
     await cp(join(packageRoot,'migrations'),join(root,'migrations'),{recursive:true});
     await cp(join(packageRoot,'agent'),join(root,'agent'),{recursive:true});
@@ -84,6 +85,6 @@ export async function run(args=process.argv.slice(2)) {
     console.log(JSON.stringify({installation:manifest.installationId,adminOrigin:manifest.adminOrigin,provider:'cloudflare',configurationIssues:issues,manualChecks:['Verify account and hostname ownership','Create or verify the dedicated R2 bucket','Back up existing D1 before applying migrations','Apply migrations and bootstrap the initial owner','Verify sender-domain onboarding and restricted email binding','Deploy only after reviewing configuration; test login on the canonical HTTPS domain'],cloudWrites:false},null,2));
     if(command==='doctor'&&issues.length)process.exitCode=1;return;
   }
-  console.log('vitris-admin init --dir NEW_DIRECTORY --slug acme --name "Acme" --domain admin.acme.com --website https://acme.com\nvitris-admin plan|doctor [--dir INSTALLATION]\nvitris-admin owner --email owner@business.com [--dir INSTALLATION]\nvitris-admin module --slug example --name "Example" [--dir INSTALLATION]\nvitris-admin connect --site WEBSITE_DIRECTORY --plan|--apply [--dir INSTALLATION]');
+  console.log('vitris-admin setup --site WEBSITE --dir NEW_ADMIN_DIRECTORY --domain admin.business.com --website HTTPS_ORIGIN --tenant TENANT_ID --backend-origin HTTPS_BACKEND --plan|--apply\nvitris-admin init --dir NEW_DIRECTORY --slug acme --name "Acme" --domain admin.acme.com --website https://acme.com\nvitris-admin plan|doctor [--dir INSTALLATION]\nvitris-admin owner --email owner@business.com [--dir INSTALLATION]\nvitris-admin module --slug example --name "Example" [--dir INSTALLATION]\nvitris-admin connect --site WEBSITE_DIRECTORY --plan|--apply [--dir INSTALLATION]');
 }
 if(process.argv[1]&&import.meta.url===pathToFileURL(resolve(process.argv[1])).href){try{await run();}catch(error){console.error(error.message);process.exitCode=1;}}

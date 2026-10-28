@@ -4,7 +4,7 @@ A standalone, open-source business website admin built around Cloudflare. Each b
 
 ## Working directory
 
-The standalone source lives in its own Git repository and npm workspace, separate from the website harness and customer-specific installations. Clone it as `website-admin-harness` (this workstation uses `E:\Projects\website-admin-harness`). The npm package names stay `@vitris/admin`, `@vitris/create-admin`, and `@vitris/admin-contracts`.
+The standalone source lives in its own Git repository and npm workspace, separate from the website harness and customer-specific installations. Clone it as `website-admin-harness` (this workstation uses `E:\Projects\website-admin-harness`). The npm packages are `@tryvitris/website-admin-harness`, `@tryvitris/create-website-admin-harness`, and `@tryvitris/website-admin-contracts`.
 
 Repository: [jackperrotta/website-admin-harness](https://github.com/jackperrotta/website-admin-harness).
 
@@ -44,13 +44,13 @@ Pages, Media, arbitrary HTML editing and a page builder are outside scope. A fut
 
 ## Packages and installation
 
-The packages are built and tested locally; they have not been published to npm.
+The public alpha release is `0.1.0-alpha.1`, distributed under the `alpha` tag. Requires Node.js 24 or newer.
 
-- `@vitris/admin`: compiled Worker runtime, UI, migrations, CLI and agent kit.
-- `@vitris/create-admin`: installation initializer using the runtime CLI.
-- `@vitris/admin-contracts`: installation manifest validation and module/permission contracts.
+- `@tryvitris/website-admin-harness`: compiled Worker runtime, UI, migrations, CLI and agent kit.
+- `@tryvitris/create-website-admin-harness`: installation initializer using the runtime CLI.
+- `@tryvitris/website-admin-contracts`: installation manifest validation and module/permission contracts.
 
-After publication, the intended initializer is `npm create @vitris/admin@VERSION -- --dir ../acme-admin --slug acme --name "Acme" --domain admin.acme.com --website https://acme.com`.
+Create a separate installation with `npm create @tryvitris/website-admin-harness@alpha -- --dir ../acme-admin --slug acme --name "Acme" --domain admin.acme.com --website https://acme.com`.
 
 For the current local build:
 
@@ -59,9 +59,23 @@ npm run build
 node packages/admin/bin/admin.mjs init --dir ../acme-admin --slug acme --name "Acme" --domain admin.acme.com --website https://acme.com
 ```
 
-The generated installation pins the alpha package version. Install from a locally packed runtime tarball until that version is published. It contains separate production and local Wrangler configurations and a copied UI release. Future package updates must also update copied UI/migrations/agent material through a reviewed diff; automatic upgrade tooling is not available yet.
+The generated installation pins the exact runtime version. Run `npm install` in the generated directory. It contains separate production and local Wrangler configurations and a copied UI release. Future package updates must also update copied UI/migrations/agent material through a reviewed diff; automatic upgrade tooling is not available yet.
 
 Use `vitris-admin plan` to inspect setup prerequisites. It makes no cloud writes. D1/R2 creation, actual resource ownership, DNS/TLS, sender onboarding and production deployment need real account configuration. See [Cloudflare deployment](packages/admin/agent/refs/cloudflare.md).
+
+## Website harness setup
+
+A website agent can use the published package without a local checkout of this repository:
+
+```sh
+npx --yes @tryvitris/website-admin-harness@alpha setup --site ../acme --dir ../acme-admin --domain admin.acme.com --website https://www.acme.com --tenant EXISTING_TENANT_ID --backend-origin https://BACKEND --plan
+```
+
+Review the website's `artifacts/admin/setup-plan.json`. Set a new dedicated `VITRIS_ADMIN_API_TOKEN` in the operator environment, then repeat with `--apply`. Install the generated admin's dependencies. Repeating the same applied setup is a no-op; changed plans, unrelated existing directories, and conflicting connections are rejected.
+
+Setup preserves existing website forms, backend URL, pages and workflow state. It saves only the token hash in the installation's ignored `.vitris/backend-grant.json`. Merge that grant into the backend's complete `ADMIN_CONNECTIONS` map and upload the raw credential to this admin as `HARNESS_API_TOKEN` through secret stdin. Default scopes are `leads:read` and `analytics:read`; use `--lead-write` during both planning and applying only when status changes are intended.
+
+The backend must already implement the Vitris admin v1 API. Setup does not add that API to an older website-harness deployment, create Cloudflare resources, enable form/analytics collection, migrate production data, configure authentication mail, or deploy either site. Those steps need the owning installation's reviewed Cloudflare workflow. No historical records are fabricated. Existing installations pinned to the earlier local `@vitris/admin` tarballs are unaffected; upgrades require a reviewed dependency, migration and copied-asset diff.
 
 ## Website agent integration
 

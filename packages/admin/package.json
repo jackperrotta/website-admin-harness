@@ -1,6 +1,6 @@
 {
-  "name": "@vitris/admin",
-  "version": "0.0.1-alpha.4",
+  "name": "@tryvitris/website-admin-harness",
+  "version": "0.1.0-alpha.1",
   "type": "module",
   "license": "MIT",
   "description": "Cloudflare business admin runtime and agent kit",
@@ -15,7 +15,11 @@
     "vitris-admin": "bin/admin.mjs"
   },
   "files": [
-    "dist",
+    "dist/worker.js",
+    "dist/worker.d.ts",
+    "dist/harness.d.ts",
+    "dist/contracts",
+    "dist/client",
     "bin",
     "migrations",
     "agent"
@@ -25,6 +29,19 @@
     "react-dom": "^19.0.0"
   },
   "publishConfig": {
-    "access": "public"
+    "access": "public",
+    "tag": "alpha"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jackperrotta/website-admin-harness.git",
+    "directory": "packages/admin"
+  },
+  "homepage": "https://github.com/jackperrotta/website-admin-harness#readme",
+  "bugs": {
+    "url": "https://github.com/jackperrotta/website-admin-harness/issues"
   }
 }
