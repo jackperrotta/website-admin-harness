@@ -43,9 +43,12 @@ export async function harnessRequest(manifest: AdminManifest, env: HarnessEnv, r
   }
   if (!Array.isArray(data.rows) || data.rows.length > 200 || data.source !== 'connected') throw new HarnessError(502, 'Website backend response is invalid');
   if (resource === 'analytics') {
-    if (!data.rows.every(isAnalyticsRow) || typeof data.timezone !== 'string' || typeof data.days !== 'number' || !Number.isInteger(data.days) || data.days < 1) throw new HarnessError(502, 'Website analytics response is invalid');
+    // The original v1 backend returns UTC daily rows without window metadata.
+    const timezone=data.timezone===undefined?'UTC':data.timezone;
+    const days=data.days===undefined?(options.days??14):data.days;
+    if (!data.rows.every(isAnalyticsRow) || typeof timezone !== 'string' || typeof days !== 'number' || !Number.isInteger(days) || days < 1) throw new HarnessError(502, 'Website analytics response is invalid');
     if(data.previousRows!==undefined&&(!Array.isArray(data.previousRows)||data.previousRows.length>200||!data.previousRows.every(isAnalyticsRow)))throw new HarnessError(502,'Website comparison analytics response is invalid');
-    return {...data, ...identity, source: 'connected', rows: data.rows, previousRows:data.previousRows as AnalyticsResponse['previousRows'], timezone: data.timezone, days: data.days};
+    return {...data, ...identity, source: 'connected', rows: data.rows, previousRows:data.previousRows as AnalyticsResponse['previousRows'], timezone, days};
   }
   if (!data.rows.every(isLeadRow) || (data.writable !== undefined && typeof data.writable !== 'boolean') || (data.message !== undefined && typeof data.message !== 'string') || (data.mode !== undefined && typeof data.mode !== 'string')) throw new HarnessError(502, 'Website lead response is invalid');
   return {...data, ...identity, source: 'connected', rows: data.rows, writable: data.writable, message: data.message, mode: data.mode};

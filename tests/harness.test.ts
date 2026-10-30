@@ -33,6 +33,9 @@ test('connected admin reads backend data, enforces identities, and never falls b
     badAnalytics=true;assert.equal((await request('analytics')).status,502);badAnalytics=false;
     const analytics=await (await request('analytics?days=30')).json() as AnalyticsResponse;assert.equal(analytics.rows[0].views,19);assert.match(seen.at(-1)!.url,/days=30/);
     const identity={schemaVersion:1,installationId:'business',tenantId:'tenant',siteOrigin:'https://business.test'};
+    override={...identity,source:'connected',rows:analytics.rows};
+    const legacy=await (await request('analytics?days=30')).json() as AnalyticsResponse;
+    assert.deepEqual(legacy.rows,analytics.rows);assert.equal(legacy.timezone,'UTC');assert.equal(legacy.days,30);
     const extended={...analytics.rows[0],sessions:8,bounces:2,engaged:5,leave_count:4,duration_ms:300000,hours_json:'[{"key":"23","n":19}]',channels_json:'[{"key":"organic","n":19}]'};
     override={...identity,source:'connected',rows:[extended],previousRows:[{...extended,day:'2026-10-01'}],timezone:'UTC',days:30};
     const rich=await (await request('analytics?days=30')).json() as AnalyticsResponse;assert.equal(rich.rows[0].sessions,8);assert.equal(rich.previousRows?.[0].day,'2026-10-01');
@@ -43,6 +46,8 @@ test('connected admin reads backend data, enforces identities, and never falls b
       ['leads',{...identity,source:'connected',rows:[{...leads.rows[0],phone:123}]}],
       ['leads',{...identity,source:'connected',rows:leads.rows,writable:'yes'}],
       ['analytics',{...identity,source:'connected',rows:analytics.rows,timezone:12,days:14}],
+      ['analytics',{...identity,source:'connected',rows:analytics.rows,timezone:null,days:14}],
+      ['analytics',{...identity,source:'connected',rows:analytics.rows,timezone:'UTC',days:null}],
       ['analytics',{...identity,source:'connected',rows:analytics.rows,timezone:'UTC',days:'14'}],
       ['analytics',{...identity,source:'connected',rows:[{...extended,sessions:-1}],timezone:'UTC',days:14}],
       ['analytics',{...identity,source:'connected',rows:[{...extended,hours_json:'[{"key":"40","n":1}]'}],timezone:'UTC',days:14}],
