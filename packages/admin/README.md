@@ -35,6 +35,7 @@ The first supported production target is Cloudflare. Interfaces and export contr
 - Branded responsive shell with Overview, Leads, Analytics, Settings, Users and access, and Activity.
 - Synthetic local data; lead search/filter/detail/status changes; analytics date range; saved notification preferences with revision conflict checks.
 - Work queue module with persistent task creation and completion.
+- Unreleased opt-in scheduling module with a day/week/agenda calendar, service and staff management, scoped availability, test appointments and atomic resource reservations. Read the packaged `agent/refs/scheduling.md` before enabling it; read `agent/refs/calendar-sync.md` for the new OAuth/sync setup. Published test-mode website bookings now use the same admin calendar; production activation remains a separate release.
 - Trusted build-time module handlers, explicit manifest enablement, permission checks, and generic record-list UI.
 - Canonical-host checks, CSRF Origin checks, D1 sessions, revocable account access, and Cloudflare email magic-link implementation.
 - npm runtime, initializer and validated contracts packages; generated installation projects; owner SQL bootstrap; module scaffold and agent kit.
@@ -44,7 +45,7 @@ Pages, Media, arbitrary HTML editing and a page builder are outside scope. A fut
 
 ## Packages and installation
 
-The public alpha release is `0.1.0-alpha.1`, distributed under the `alpha` tag. Requires Node.js 24 or newer.
+The next public alpha release is `0.1.0-alpha.2`, distributed under the `alpha` tag. Requires Node.js 24 or newer.
 
 - `@tryvitris/website-admin-harness`: compiled Worker runtime, UI, migrations, CLI and agent kit.
 - `@tryvitris/create-website-admin-harness`: installation initializer using the runtime CLI.
@@ -58,6 +59,8 @@ For the current local build:
 npm run build
 node packages/admin/bin/admin.mjs init --dir ../acme-admin --slug acme --name "Acme" --domain admin.acme.com --website https://acme.com
 ```
+
+All maintained code uses strict TypeScript, including the CLI, scripts, tests, and generated installation sources. Node.js 24 or later runs repository scripts; npm packages ship compiled JavaScript entry points with declarations. The generated installation includes `worker.ts`, `worker.local.ts`, typed module scaffolds, and `npm run typecheck` / `npm run check`.
 
 The generated installation pins the exact runtime version. Run `npm install` in the generated directory. It contains separate production and local Wrangler configurations and a copied UI release. Future package updates must also update copied UI/migrations/agent material through a reviewed diff; automatic upgrade tooling is not available yet.
 
@@ -102,3 +105,11 @@ npm run check
 Checks include TypeScript, production builds, manifest/role tests, workerd/D1 integration tests for canonical hosts, CSRF, record scoping, revocation, concurrent login token reuse, expired links, settings conflicts, and package installation outside the workspace. Synthetic data and stubbed email are used throughout. No production credentials are required.
 
 MIT licensed. Each installation's customer data and infrastructure credentials remain private.
+
+Calendar synchronization source and local preview: see [setup and operations](agent/refs/calendar-sync.md). Google/Outlook apps are business-owned; calendar attachments and opt-in customer email/management links are implemented; real sender/inbox acceptance remains separate.
+
+Standard website guest bookings are opt-in; read [setup and verification](agent/refs/public-booking.md) before enabling them.
+
+Customer email and private cancellation/rescheduling link setup: [reference](agent/refs/customer-notifications.md).
+
+Appointment reminders are opt-in in Scheduling → Booking settings. Choose up to three lead times and use the existing captured-email inbox or configured test sender. Review migration 0008 and [reminder eligibility and setup](agent/refs/customer-notifications.md) before installation changes.

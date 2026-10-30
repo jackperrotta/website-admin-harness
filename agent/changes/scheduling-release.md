@@ -1,0 +1,7 @@
+# Admin alpha.2 release candidate
+
+The owner authorized release preparation, Git push and npm publication, including all pending work in both harness repositories. The admin family advances together to 0.1.0-alpha.2 under the alpha tag. Include scheduling configuration/calendar UI, Google/Outlook adapters, guest website booking, customer confirmations and management links, reminders, analytics/theme support and the maintained TypeScript entry points.
+
+Preserve earlier migration bytes and exact installation identities. Scheduling remains optional and test-only; apply migrations through 0008, OAuth apps, Turnstile, rate/encryption secrets, cron and the restricted sender only through reviewed installation changes. Simulated providers and captured email are not live account/inbox acceptance. No customer backend deployment or migration is part of npm publication.
+
+Require clean dependency and credential scans, build/typecheck/full tests, outside-workspace package installation and paired browser acceptance. Pin patched Miniflare dependencies in source development and generated installations. Publish only reviewed archive bytes, verify public registry integrity and cold installation, then tag the published admin release. The website must pin the exact new admin version before its own release. Keep test logs, archives and publication receipts ignored. A missing npm login blocks publication, not testing or Git preparation.

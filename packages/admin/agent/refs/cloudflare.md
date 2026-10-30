@@ -11,3 +11,7 @@ Authentication uses Cloudflare Email Service's structured `send()` builder throu
 Create the initial owner SQL with `vitris-admin owner --email ADDRESS`, review `.vitris/bootstrap-owner.sql`, then apply it to the correct D1 database with Wrangler. The command does not promote an existing account and never invents a password or prints a login token. If email is absent or fails, the UI never displays a sign-in link as a fallback.
 
 `vitris-admin plan` reports configuration prerequisites and makes no cloud changes. `doctor` checks configuration presence, not actual DNS, sender delivery, or resource ownership. Automated resource reconciliation is a later milestone. Before deployment, inspect Wrangler's dry-run output and verify package contents. Keep installation dependencies pinned and update copied UI/agent files through reviewed diffs.
+
+Opt-in scheduling calendars require separately reviewed migration 0005, business-owned OAuth credentials, token encryption secrets and an explicit one-minute cron trigger. Preserve the returned `scheduled` handler when wrapping `createAdmin`; see `calendar-sync.md`. Do not enable or provision calendar connections as a setup side effect.
+
+Customer scheduling emails use the separate restricted `SCHEDULING_EMAIL` structured binding, a notification encryption ring and explicit business settings. Read `customer-notifications.md` before enabling it; preserve the cron handler and validate sender/inbox acceptance separately. Local captures do not prove delivery.

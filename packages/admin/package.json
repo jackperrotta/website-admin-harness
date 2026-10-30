@@ -1,6 +1,6 @@
 {
   "name": "@tryvitris/website-admin-harness",
-  "version": "0.1.0-alpha.1",
+  "version": "0.1.0-alpha.2",
   "type": "module",
   "license": "MIT",
   "description": "Cloudflare business admin runtime and agent kit",
@@ -9,7 +9,10 @@
       "types": "./dist/worker.d.ts",
       "default": "./dist/worker.js"
     },
-    "./cli": "./bin/admin.mjs"
+    "./cli": {
+      "types": "./bin/admin.d.mts",
+      "default": "./bin/admin.mjs"
+    }
   },
   "bin": {
     "vitris-admin": "bin/admin.mjs"
@@ -18,11 +21,14 @@
     "dist/worker.js",
     "dist/worker.d.ts",
     "dist/harness.d.ts",
+    "dist/calendar.d.ts",
+    "dist/booking.d.ts",
     "dist/contracts",
     "dist/client",
-    "bin",
     "migrations",
-    "agent"
+    "agent",
+    "bin/*.mjs",
+    "bin/*.d.mts"
   ],
   "dependencies": {
     "react": "^19.0.0",

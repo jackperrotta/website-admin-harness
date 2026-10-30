@@ -6,15 +6,17 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "node scripts/build.mjs",
+    "build": "node --experimental-strip-types scripts/build.ts",
     "typecheck": "tsc --noEmit",
-    "test": "npm run build && node --test tests/*.test.mjs",
+    "test": "npm run build && node --experimental-strip-types --test tests/*.test.ts",
     "dev": "npm run build && npm run db:local && wrangler dev --config wrangler.local.jsonc --port 4391",
     "db:local": "wrangler d1 migrations apply vitris-admin-local --local --config wrangler.local.jsonc",
-    "check": "npm run build && npm run typecheck && node --test tests/*.test.mjs",
-    "release:pack": "npm run check && node scripts/pack-release.mjs",
-    "release:publish": "node scripts/publish-release.mjs",
-    "release:verify": "node scripts/verify-registry-install.mjs"
+    "check": "npm run build && npm run typecheck && node --experimental-strip-types --test tests/*.test.ts",
+    "release:pack": "npm run check && node --experimental-strip-types scripts/pack-release.ts",
+    "release:publish": "node --experimental-strip-types scripts/publish-release.ts",
+    "release:verify": "node --experimental-strip-types scripts/verify-registry-install.ts",
+    "scheduling:preview": "npm run build && node --experimental-strip-types scripts/scheduling-preview.ts",
+    "booking:preview": "npm run build && node --experimental-strip-types scripts/booking-preview.ts"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260922.1",
@@ -23,8 +25,18 @@
     "@types/react-dom": "^19.0.0",
     "esbuild": "^0.28.1",
     "miniflare": "5.20260918.0-alpha",
+    "playwright": "1.63.0",
     "typescript": "^5.9.2",
     "vite": "^7.0.0",
     "wrangler": "^4.135.0"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "overrides": {
+    "miniflare": {
+      "undici": "7.30.1",
+      "sharp": "0.35.5"
+    }
   }
 }

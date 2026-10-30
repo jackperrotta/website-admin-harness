@@ -1,7 +1,12 @@
-import type {AdminManifest} from '../../contracts/src/index.ts';
-export interface HarnessEnv {HARNESS_API_TOKEN?:string;HARNESS_SERVICE?:Fetcher}
+import {isObject, isLeadRow, isAnalyticsRow, isWebsiteTheme, type WebsiteTheme, type AdminManifest, type LeadsResponse, type AnalyticsResponse, type MutationResponse} from '../../contracts/src/index.ts';
+interface BackendIdentity {schemaVersion: 1; installationId: string; tenantId: string; siteOrigin: string}
+interface StatusResponse extends BackendIdentity {scopes: string[]; theme?: WebsiteTheme | null}
+interface HarnessResponses {status: StatusResponse; leads: LeadsResponse & BackendIdentity; analytics: AnalyticsResponse & BackendIdentity; 'leads/status': MutationResponse}
+type HarnessOptions = {days?: number; body?: unknown; mode?: 'test' | 'production'};
+export interface HarnessEnv {HARNESS_API_TOKEN?:string;HARNESS_SERVICE?:Pick<Fetcher, 'fetch'>}
 export class HarnessError extends Error {constructor(public status:number,message:string){super(message);}}
-export async function harnessRequest(manifest:AdminManifest,env:HarnessEnv,resource:'status'|'leads'|'analytics'|'leads/status',options:{days?:number;body?:unknown;mode?:'test'|'production'}={}) {
+export function harnessRequest<R extends keyof HarnessResponses>(manifest: AdminManifest, env: HarnessEnv, resource: R, options?: HarnessOptions): Promise<HarnessResponses[R]>;
+export async function harnessRequest(manifest: AdminManifest, env: HarnessEnv, resource: keyof HarnessResponses, options: HarnessOptions = {}): Promise<HarnessResponses[keyof HarnessResponses]> {
   if(!manifest.backend)throw new HarnessError(503,'Website backend is not connected');
   if(!env.HARNESS_API_TOKEN || !/^[a-zA-Z0-9_-]{32,200}$/.test(env.HARNESS_API_TOKEN))throw new HarnessError(503,'The website connection credential is missing. Ask your administrator to finish setup.');
   const path=`/api/admin/v1/${encodeURIComponent(manifest.backend.tenantId)}/${resource}`;
@@ -21,16 +26,27 @@ export async function harnessRequest(manifest:AdminManifest,env:HarnessEnv,resou
   if(!reader)throw new HarnessError(502,'Website returned an empty response');
   for(;;){const {done,value}=await reader.read();if(done)break;total+=value.length;if(total>4_000_000){await reader.cancel();throw new HarnessError(502,'Website response exceeds the supported size');}chunks.push(value);}
   const bytes=new Uint8Array(total);let offset=0;for(const chunk of chunks){bytes.set(chunk,offset);offset+=chunk.length;}
-  let data:any;try{data=JSON.parse(new TextDecoder().decode(bytes));}catch{throw new HarnessError(502,'Website returned an invalid response');}
-  if(resource==='leads/status'){if(data?.ok!==true)throw new HarnessError(502,'Website did not confirm the status change');return data;}
-  if(data?.schemaVersion!==1)throw new HarnessError(502,'Website backend contract version is unsupported');
-  if(data.installationId!==manifest.installationId||data.tenantId!==manifest.backend.tenantId||data.siteOrigin!==manifest.site.origin)throw new HarnessError(502,'Website backend identity does not match this installation');
-  if(resource==='status'){
-    if(data.installationId!==manifest.installationId||data.tenantId!==manifest.backend.tenantId||data.siteOrigin!==manifest.site.origin||!Array.isArray(data.scopes))throw new HarnessError(502,'Website backend identity does not match this installation');
-  }else{
-    if(!Array.isArray(data.rows)||data.rows.length>200||data.source!=='connected')throw new HarnessError(502,'Website backend response is invalid');
-    if(resource==='analytics' && data.rows.some((r:any)=>typeof r.day!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(r.day)||['views','visitors','enquiries'].some(k=>typeof r[k]!=='number'||!Number.isFinite(r[k])||r[k]<0)))throw new HarnessError(502,'Website analytics response is invalid');
-    if(resource==='leads' && data.rows.some((r:any)=>typeof r.id!=='string'||typeof r.name!=='string'||typeof r.email!=='string'||typeof r.message!=='string'||typeof r.created_at!=='string'||typeof r.status!=='string'))throw new HarnessError(502,'Website lead response is invalid');
+  let data: unknown;
+  try {data = JSON.parse(new TextDecoder().decode(bytes));} catch {throw new HarnessError(502, 'Website returned an invalid response');}
+  if (!isObject(data)) throw new HarnessError(502, 'Website returned an invalid response');
+  if (resource === 'leads/status') {
+    if (data.ok !== true) throw new HarnessError(502, 'Website did not confirm the status change');
+    return {...data, ok: true};
   }
-  return data;
+  if (data.schemaVersion !== 1) throw new HarnessError(502, 'Website backend contract version is unsupported');
+  if (data.installationId !== manifest.installationId || data.tenantId !== manifest.backend.tenantId || data.siteOrigin !== manifest.site.origin) throw new HarnessError(502, 'Website backend identity does not match this installation');
+  const identity: BackendIdentity = {schemaVersion: 1, installationId: data.installationId, tenantId: data.tenantId, siteOrigin: data.siteOrigin};
+  if (resource === 'status') {
+    if (!Array.isArray(data.scopes) || !data.scopes.every((scope: unknown): scope is string => typeof scope === 'string')) throw new HarnessError(502, 'Website backend identity does not match this installation');
+    if(data.theme!==undefined&&data.theme!==null&&!isWebsiteTheme(data.theme))throw new HarnessError(502,'Website theme response is invalid');
+    return {...data, ...identity, scopes: data.scopes, theme:data.theme as WebsiteTheme|null|undefined};
+  }
+  if (!Array.isArray(data.rows) || data.rows.length > 200 || data.source !== 'connected') throw new HarnessError(502, 'Website backend response is invalid');
+  if (resource === 'analytics') {
+    if (!data.rows.every(isAnalyticsRow) || typeof data.timezone !== 'string' || typeof data.days !== 'number' || !Number.isInteger(data.days) || data.days < 1) throw new HarnessError(502, 'Website analytics response is invalid');
+    if(data.previousRows!==undefined&&(!Array.isArray(data.previousRows)||data.previousRows.length>200||!data.previousRows.every(isAnalyticsRow)))throw new HarnessError(502,'Website comparison analytics response is invalid');
+    return {...data, ...identity, source: 'connected', rows: data.rows, previousRows:data.previousRows as AnalyticsResponse['previousRows'], timezone: data.timezone, days: data.days};
+  }
+  if (!data.rows.every(isLeadRow) || (data.writable !== undefined && typeof data.writable !== 'boolean') || (data.message !== undefined && typeof data.message !== 'string') || (data.mode !== undefined && typeof data.mode !== 'string')) throw new HarnessError(502, 'Website lead response is invalid');
+  return {...data, ...identity, source: 'connected', rows: data.rows, writable: data.writable, message: data.message, mode: data.mode};
 }

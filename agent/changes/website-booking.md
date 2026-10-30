@@ -1,0 +1,5 @@
+# Website booking component
+
+Add an opt-in public booking API and a standard website component. Public callers use a separate guest command ledger, exact website Origin, bounded rate limits, Turnstile outside explicitly isolated loopback previews, published services, strict requests, and idempotency. They never impersonate an administrator. Both admin and public commands use the same availability calculations, native appointments/reservations and calendar export triggers.
+
+Preserve migrations 0001-0005. Add 0006 for public command authorization, guest history and rate limits. Admin settings explicitly publish selected services and policies. This slice retains test-only scheduling mode and captured email delivery; no production activation, remote migration, deployment or publication is authorized. The website connection contains public identity/origin metadata only. Verify cross-origin guest booking reaches the real admin calendar, conflict/retry behavior, approval, private-data exclusion, disabled/abuse controls, mobile/keyboard states and packed packages. Keep local preview available for user testing.

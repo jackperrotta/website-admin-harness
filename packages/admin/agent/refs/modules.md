@@ -9,3 +9,7 @@ The current capability vocabulary is intentionally small. Add a new capability t
 Return JSON with `{rows: [...]}` for the built-in list renderer. Each row has a stable `id` and a human-readable `title` or `name`. The Work queue example has a dedicated interface, an additive migration, and separate read/write capabilities. More elaborate visualizations are compiled into the UI package through source changes.
 
 Filter records by `manifest.site.id`. Bind SQL parameters. Bound request bodies and validate all writable fields in the handler. Do not log tokens, form contents, customer email bodies, or raw network addresses. Generic modules are trusted code, not a security sandbox; installing source grants access to the installation's bindings.
+
+New module scaffolds use `modules/<slug>/index.ts` with `satisfies AdminModule`. Import that TypeScript definition into `worker.ts` and `worker.local.ts`. Run `npm run check` in the installation to verify both Workers and all module sources. Preserve existing installation entry points during upgrades; the initializer only writes new installations.
+
+`scheduling` is a built-in optional module. Do not scaffold or register an extension with that ID. Read `refs/scheduling.md` before enabling it or changing its contracts, schema, permissions or reservation rules. It currently accepts test appointments and captures jobs; it does not enable public booking. Opt-in Google/Outlook sync requires the separate setup in `calendar-sync.md`; test appointments write to enabled calendars.

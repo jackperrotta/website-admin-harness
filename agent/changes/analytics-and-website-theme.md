@@ -1,0 +1,7 @@
+# Expanded analytics and website colors
+
+Promote the reviewed analytics design into the packaged React admin. Extend the existing `analytics:read` response with daily session, bounce, engagement, exit duration, scroll, conversion-action and breakdown fields, plus the preceding matching period. Keep basic v1 responses compatible and display unavailable metrics explicitly. Preserve installation, tenant, origin, credential and role checks. No new permissions, bindings, modules or database migrations are needed.
+
+The corresponding local website-backend change reads existing rollups and today's live events, scoped to the granted tenant, excluding preview traffic. It does not mutate rollups during reads. Status returns only validated website color tokens from published R2 theme CSS, with stored theme as fallback. Admin bootstrap applies these colors (including login) through semantic CSS variables; existing manifests may provide the same validated theme tokens for installations without a backend.
+
+Validation covers extended/malformed/legacy analytics, scoped permissions, tenant separation, preview/test exclusions, weighted duration and scroll metrics, 24 hourly buckets, theme safety, empty states, and packaged installation outside the workspace. Changes are local source and release artifacts; no shared backend deployment, migration, credential/grant replacement, or customer installation update is performed.

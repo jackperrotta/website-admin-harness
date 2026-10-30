@@ -1,0 +1,12 @@
+import {createWebsiteBookingFixture} from '../tests/website-booking-fixture.ts';
+const args=process.argv.slice(2),index=args.indexOf('--website-harness');
+const port=(flag:string,fallback:number)=>{const i=args.indexOf(flag),value=i<0?fallback:Number(args[i+1]);if(!Number.isInteger(value)||value<1024||value>65535)throw Error(`Invalid ${flag}`);return value;};
+const preview=await createWebsiteBookingFixture({port:port('--website-port',4392),adminPort:port('--admin-port',4391),...(index>=0?{websiteHarness:args[index+1]}:{})});
+let running=false;
+const timer=setInterval(async()=>{if(running)return;running=true;try{await(await preview.backend.app.getWorker()).scheduled({cron:'* * * * *'});}catch{console.error('Simulated calendar polling needs attention. Check Calendar connections.');}finally{running=false;}},60000);
+console.log(`Website booking: ${preview.origin}/book`);
+console.log(`Admin calendar: ${preview.backend.origin}/#scheduling`);
+console.log('LOCAL TEST ONLY: shared ephemeral D1, simulated Google/Outlook, captured email, isolated loopback security fixture.');
+console.log('Choose Open local demo in admin. Book on the website, then view that date in the admin calendar.');
+console.log(`Compiled website: ${preview.out}`);
+const close=()=>{clearInterval(timer);void preview.close().then(()=>process.exit(0));};process.on('SIGINT',close);process.on('SIGTERM',close);await new Promise(()=>{});

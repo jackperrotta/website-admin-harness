@@ -1,0 +1,9 @@
+# Scheduling admin interface
+
+Build a dedicated, lazy-loaded React scheduling workspace with day, week and agenda views; appointment creation, details, approval, cancellation and staff rescheduling; service and team/resource editors; location setup; weekly availability and dated exceptions; and booking settings. Retain the existing admin theme, session, Origin, revision and resource-scope checks. Keep scheduling opt-in and test-only.
+
+Add a permission-filtered workspace read response so provider-scoped users can operate the interface without receiving full configuration, grants, or the account directory. Configuration editors retain their original revision and preserve drafts on conflicts. Rescheduling searches must use the appointment snapshot and omit its own reservations, with normal assignment authorization.
+
+No schema or Cloudflare binding changes. No public booking, real notification delivery, calendar OAuth/sync, production activation, cloud writes or package publication. Verify real local D1 flows in Chromium at desktop and mobile sizes, including permissions, failures and stale edits. Run the complete package check and retain evidence in ignored artifacts.
+
+Implemented and verified October 28, 2026. `npm run check` passes build, strict typecheck and all 47 tests, including nine Chromium flows on real local D1 and external packed-package installation. Screenshots were visually reviewed on desktop and at 390px mobile width. Coverage includes first-run setup, service/staff/availability management, appointment lifecycle, scoped access, preserved stale drafts, retries after a committed-but-lost response, explicit DST offsets, midnight boundaries and current price/duration after concurrent edits. Evidence and the isolated synthetic preview remain in ignored `artifacts/scheduling-ui/`.

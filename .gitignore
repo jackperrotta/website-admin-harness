@@ -7,3 +7,8 @@ artifacts/
 *.tgz
 
 .vitris/
+
+# Compiled Node entry points; edit the TypeScript sources.
+packages/admin/bin/*.mjs
+packages/admin/bin/*.d.mts
+packages/create-admin/index.mjs

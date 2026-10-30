@@ -1,0 +1,13 @@
+# Google and Microsoft calendar synchronization
+
+Add business-owned OAuth connections, encrypted refresh tokens, calendar selection, imported busy intervals, durable appointment export jobs, bounded polling and explicit conflict recovery. Calendar changes never silently cancel or reschedule native appointments. Preserve the existing authenticated routes and add only a state/cookie-bound OAuth GET callback on the canonical host. No production migrations or deployment.
+
+Use new migration 0005; preserve 0001 through 0004. Imports publish a complete generation atomically and invalidate the schedule revision only when busy state changes. Database guards reject external overlaps and unhealthy required connections. Native writes enqueue exports in their own transaction; a failed external write retains the appointment and a retryable job. Refresh external state before accepting a new time, and reconcile on a one-minute scheduled handler.
+
+Add universal RFC 5545 calendar downloads and captured notification attachments, with stable identity, revision sequence, escaping and line folding. These are add-to-calendar files; they do not read external availability or guarantee synchronization after import.
+
+Provider credentials are not available for live acceptance. Include exact OAuth setup instructions and a separate, explicitly labeled loopback-only provider simulator for local testing. Exercise actual adapters against simulated provider HTTP and real local workerd/D1, plus UI tests. Do not imply that simulated acceptance proves real account authorization or delivery. Run npm run check and packed-package acceptance. Restart the isolated local preview for user testing.
+
+Implemented OAuth + encrypted refresh credentials, native transactional export queue, complete busy snapshots, a scheduled runner, scoped calendar management and conflict recovery. Added RFC 5545 files and captured notification attachments. Preview and real-account setup are documented in the packaged calendar-sync reference. Calendar files deliberately carry no invitation METHOD or invented organizer; actual email delivery remains pending.
+
+Verification uses real local workerd/D1 with isolated provider HTTP fixtures, browser desktop/mobile flows, failure/retry/revocation/lease checks, DST and Unicode ICS cases, and packed-package installation outside the workspace. Real OAuth authorization remains unverified because no provider registrations are available. Existing migrations 0001-0004 were preserved; the original 0004 receipt hash still matches. No remote migration, deployment, publication, customer calendar write or email delivery was performed. Current verification receipts and screenshots remain ignored in artifacts/calendar-sync/.

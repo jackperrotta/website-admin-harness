@@ -1,6 +1,6 @@
 {
   "name": "@tryvitris/create-website-admin-harness",
-  "version": "0.1.0-alpha.1",
+  "version": "0.1.0-alpha.2",
   "type": "module",
   "license": "MIT",
   "description": "Create a standalone Cloudflare business admin installation",
@@ -11,7 +11,7 @@
     "index.mjs"
   ],
   "dependencies": {
-    "@tryvitris/website-admin-harness": "0.1.0-alpha.1"
+    "@tryvitris/website-admin-harness": "0.1.0-alpha.2"
   },
   "publishConfig": {
     "access": "public",
