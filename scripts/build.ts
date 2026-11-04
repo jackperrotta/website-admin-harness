@@ -6,12 +6,12 @@ await mkdir('packages/contracts/dist', {recursive: true});
 for(const name of ['admin','contracts','create-admin']) await copyFile('LICENSE',`packages/${name}/LICENSE`);
 // Keep the root and scheduling entry points on one module identity (including validation errors).
 await build({entryPoints: ['packages/contracts/src/index.ts'], outfile: 'packages/contracts/dist/index.js', bundle: false, format: 'esm', platform: 'neutral'});
-await writeFile('packages/contracts/dist/index.js', (await readFile('packages/contracts/dist/index.js', 'utf8')).replaceAll('./scheduling.ts', './scheduling.js').replaceAll('./client-portfolio.ts', './client-portfolio.js').replaceAll('./client-onboarding.ts', './client-onboarding.js').replaceAll('./billing.ts', './billing.js').replaceAll('./stripe-billing.ts','./stripe-billing.js'));
-for (const name of ['scheduling', 'client-portfolio', 'client-onboarding', 'billing', 'stripe-billing']) await build({entryPoints: [`packages/contracts/src/${name}.ts`], outfile: `packages/contracts/dist/${name}.js`, bundle: true, format: 'esm', platform: 'neutral'});
+await writeFile('packages/contracts/dist/index.js', (await readFile('packages/contracts/dist/index.js', 'utf8')).replaceAll('./scheduling.ts', './scheduling.js').replaceAll('./client-portfolio.ts', './client-portfolio.js').replaceAll('./client-onboarding.ts', './client-onboarding.js').replaceAll('./billing.ts', './billing.js').replaceAll('./stripe-billing.ts','./stripe-billing.js').replaceAll('./webmaster.ts','./webmaster.js'));
+for (const name of ['scheduling', 'client-portfolio', 'client-onboarding', 'billing', 'stripe-billing', 'webmaster']) await build({entryPoints: [`packages/contracts/src/${name}.ts`], outfile: `packages/contracts/dist/${name}.js`, bundle: true, format: 'esm', platform: 'neutral'});
 const {spawnSync} = await import('node:child_process');
 const declaration = spawnSync(process.execPath, ['node_modules/typescript/bin/tsc', 'packages/contracts/src/index.ts', '--declaration', '--emitDeclarationOnly', '--outDir', 'packages/contracts/dist', '--target', 'ES2022', '--moduleResolution', 'bundler', '--module', 'esnext', '--allowImportingTsExtensions', '--strict', '--skipLibCheck'], {stdio: 'inherit'});
 if (declaration.status !== 0) throw declaration.error || new Error('Contract declaration build failed');
-await writeFile('packages/contracts/dist/index.d.ts', (await readFile('packages/contracts/dist/index.d.ts', 'utf8')).replaceAll('./scheduling.ts', './scheduling.js').replaceAll('./client-portfolio.ts', './client-portfolio.js').replaceAll('./client-onboarding.ts', './client-onboarding.js').replaceAll('./billing.ts', './billing.js').replaceAll('./stripe-billing.ts','./stripe-billing.js'));
+await writeFile('packages/contracts/dist/index.d.ts', (await readFile('packages/contracts/dist/index.d.ts', 'utf8')).replaceAll('./scheduling.ts', './scheduling.js').replaceAll('./client-portfolio.ts', './client-portfolio.js').replaceAll('./client-onboarding.ts', './client-onboarding.js').replaceAll('./billing.ts', './billing.js').replaceAll('./stripe-billing.ts','./stripe-billing.js').replaceAll('./webmaster.ts','./webmaster.js'));
 for(const name of ['pages','account-mail'])await build({entryPoints:[`packages/admin/src/${name}.ts`],outfile:`packages/admin/dist/${name}.js`,bundle:true,format:'esm',platform:'neutral',external:['cloudflare:*'],target:'es2022'});
 await build({entryPoints: ['packages/admin/src/worker.ts'], outfile: 'packages/admin/dist/worker.js', bundle: true, format: 'esm', platform: 'neutral', target: 'es2022'});
 await build({entryPoints: ['packages/admin/src/client-portfolio/prototype.ts'], outfile: 'packages/admin/dist/client-portfolio.js', bundle: true, format: 'esm', platform: 'neutral', target: 'es2022'});
@@ -23,6 +23,7 @@ if(workerDeclarations.status !== 0) throw workerDeclarations.error || new Error(
 await copyFile('packages/admin/dist/types/admin/src/worker.d.ts','packages/admin/dist/worker.d.ts');
 await mkdir('packages/admin/dist/contracts',{recursive:true});
 await copyFile('packages/contracts/dist/index.d.ts','packages/admin/dist/contracts/index.d.ts');
+await copyFile('packages/contracts/dist/webmaster.d.ts','packages/admin/dist/contracts/webmaster.d.ts');
 await copyFile('packages/contracts/dist/scheduling.d.ts','packages/admin/dist/contracts/scheduling.d.ts');
 await copyFile('packages/contracts/dist/billing.d.ts','packages/admin/dist/contracts/billing.d.ts');
 await copyFile('packages/contracts/dist/stripe-billing.d.ts','packages/admin/dist/contracts/stripe-billing.d.ts');

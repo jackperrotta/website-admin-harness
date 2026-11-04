@@ -11,6 +11,7 @@ import {createPortfolioFixture} from './client-portfolio-fixture.ts';
 import {createBillingPair} from './billing-fixture.ts';
 import {stripePair} from './stripe-fixture.ts';
 import {accountFixture,syntheticPassword} from './accounts-fixture.ts';
+import {webmasterFixture,webmasterConfig} from './webmaster-fixture.ts';
 import {assertSafeArchive} from '../scripts/publication-safety.ts';
 const npmCLI=process.env.npm_execpath;
 const npm=(args: string[],cwd: string)=>execFileSync(process.execPath,[npmCLI!,...args],{cwd,encoding:'utf8',stdio:['ignore','pipe','pipe']});
@@ -51,6 +52,7 @@ test('packed npm packages scaffold an external installation, agent kit, and safe
   assert.ok(paths.includes('migrations/0008_appointment_reminders.sql'));
   assert.ok(paths.includes('dist/pages.js')&&paths.includes('dist/pages.d.ts')&&paths.includes('dist/account-mail.js')&&paths.includes('dist/account-mail.d.ts'));
   assert.ok(paths.includes('migrations/0009_account_lifecycle.sql')&&paths.includes('dist/accounts.d.ts')&&paths.includes('agent/refs/accounts.md'));
+  assert.ok(paths.includes('migrations/0011_webmaster_connections.sql')&&paths.includes('dist/contracts/webmaster.d.ts')&&paths.includes('agent/refs/webmaster.md'));
   assert.ok(paths.includes('migrations/0007_customer_notifications.sql') && paths.includes('agent/refs/customer-notifications.md'));
   assert.ok(paths.includes('migrations/0006_public_booking.sql') && paths.includes('dist/booking.d.ts') && paths.includes('agent/refs/public-booking.md'));
   assert.ok(paths.includes('migrations/0005_calendar_sync.sql') && paths.includes('dist/calendar.d.ts') && paths.includes('agent/refs/calendar-sync.md'));
@@ -60,6 +62,9 @@ test('packed npm packages scaffold an external installation, agent kit, and safe
   assert.ok(paths.every(x=>!x.startsWith('dist/types/')&&!x.endsWith('.map')));
   const tool=join(root,'tool');await mkdir(tool);
   npm(['install','--ignore-scripts','--no-audit','--no-fund',join(root,runtime.filename),join(root,initializer.filename),join(root,contracts.filename)],tool);
+  const webmaster=await webmasterFixture({runtimeRoot:join(tool,'node_modules/@tryvitris/website-admin-harness')});
+  try{assert.equal((await webmaster.request(undefined,webmasterConfig)).status,200);assert.equal((await webmaster.view()).connection?.billingProvider,false);assert.equal((await webmaster.request('/api/analytics',undefined,'editor')).status,200);assert.equal((await webmaster.request('/api/leads',undefined,'editor')).status,403);assert.equal((await webmaster.request('/api/modules/webmaster/disconnect',{revision:1,acknowledgeSubscription:true})).status,200);assert.equal((await webmaster.request('/api/analytics',undefined,'editor')).status,401);}finally{await webmaster.app.dispose();}
+  execFileSync(process.execPath,['--input-type=module','-e',"import assert from 'node:assert/strict';import {webmasterScopes,validWebmasterScopes,userCan} from '@tryvitris/website-admin-contracts';assert.ok(webmasterScopes.includes('analytics:read'));assert.equal(validWebmasterScopes(['account-billing:manage']),false);assert.equal(userCan({id:'owner',email:'owner@example.test',role:'owner'},'access:write'),true);"],{cwd:tool,encoding:'utf8'});
   const portfolio = await createPortfolioFixture({runtimeRoot: join(tool,'node_modules/@tryvitris/website-admin-harness'), onboarding: true});
   try {const response = await portfolio.request();assert.equal(response.status,200);assert.equal((await response.json() as {simulated:boolean}).simulated,true);const prospects=await portfolio.app.dispatchFetch(`${portfolio.origin}/api/modules/client-onboarding`,{headers:{cookie:portfolio.cookies.owner}});assert.equal(prospects.status,200);assert.equal((await prospects.json() as {localOnly:boolean}).localOnly,true);} finally {await portfolio.app.dispose();}
   const billing=await createBillingPair({runtimeRoot:join(tool,'node_modules/@tryvitris/website-admin-harness')});
@@ -92,6 +97,7 @@ test('packed npm packages scaffold an external installation, agent kit, and safe
   assert.match(await readFile(join(target,'agent/WORKFLOW.md'),'utf8'),/Cloudflare/);
   assert.throws(()=>command(['init','--dir',target],root));
   assert.throws(()=>command(['module','--dir',target,'--slug','scheduling','--name','Scheduling'],root));
+  assert.throws(()=>command(['module','--dir',target,'--slug','webmaster','--name','Webmaster'],root));
   command(['module','--dir',target,'--slug','estimates','--name','Estimates'],root);
   assert.match(await readFile(join(target,'modules/estimates/index.ts'),'utf8'),/request.method !== 'GET'/);
   npm(['run','typecheck'],target);

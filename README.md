@@ -41,6 +41,7 @@ The first supported production target is Cloudflare. Interfaces and export contr
 - Branded responsive shell with Overview, Leads, Analytics, Settings, Users and access, and Activity.
 - Lead search, status/due/assignee filters, follow-up notes and keyset pagination; analytics date ranges and history; saved notification preferences with revision conflict checks. Local previews use synthetic data, while configured backend connections read authoritative records.
 - Work queue module with persistent task creation and completion.
+- Opt-in **Managed by Webmaster** connection in Settings: named organization, scoped team operations and optional lead access, owner-controlled revocation, and person/organization activity attribution. Works without billing; separately paired **Your billing** stays independent. See [installation and access rules](packages/admin/agent/refs/webmaster.md).
 - Opt-in [scheduling module](docs/SCHEDULING.md): day/week/agenda calendar, service and staff management, scoped availability, test appointments and atomic resource reservations. Google/Outlook calendar sync and calendar files are implemented in source; test-mode website bookings now use the same admin calendar.
 - Trusted build-time module handlers, explicit manifest enablement, permission checks, and generic record-list UI.
 - Canonical-host checks, CSRF Origin checks, D1 sessions, revocable account access, and opt-in owner setup, team invitations, verification and password recovery through Cloudflare Email Service.
@@ -55,7 +56,7 @@ Pages and Media editing, arbitrary HTML editing and a page builder are outside s
 
 ## Packages and installation
 
-The stable release is `1.0.0`, distributed under the `latest` tag. Requires Node.js 24 or newer.
+The stable release is `1.1.0`, distributed under the `latest` tag. Requires Node.js 24 or newer.
 
 - `@tryvitris/website-admin-harness`: compiled Worker runtime, UI, migrations, CLI and agent kit.
 - `@tryvitris/create-website-admin-harness`: installation initializer using the runtime CLI.

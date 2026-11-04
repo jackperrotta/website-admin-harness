@@ -1,5 +1,5 @@
 import React,{useEffect,useRef,useState} from 'react';
-import {isObject} from '../../../contracts/src/index.ts';
+import {isObject,userCan} from '../../../contracts/src/index.ts';
 import type {BootstrapResponse,LeadRow,LeadFollowUp,LeadsResponse,LeadTeamMember} from '../../../contracts/src/index.ts';
 import './leads.css';
 
@@ -14,7 +14,7 @@ const due=(row:LeadRow)=>row.status!=='closed'&&!row.followUp?.completed&&!!row.
 export function LeadsWorkspace({boot}:{boot:BootstrapResponse}){
   const [mode,setMode]=useState('production'),[query,setQuery]=useState(''),[draftQuery,setDraftQuery]=useState(''),[status,setStatus]=useState('all'),[queue,setQueue]=useState('all'),[mine,setMine]=useState(false);
   const [cursors,setCursors]=useState<string[]>([]),[version,setVersion]=useState(0),[data,setData]=useState<LeadsResponse|null>(null),[error,setError]=useState(''),[loading,setLoading]=useState(true),[selected,setSelected]=useState<LeadRow|null>(null),[team,setTeam]=useState<LeadTeamMember[]>([]);
-  const dirty=useRef(false),canWrite=boot.user?.role!=='analyst';
+  const dirty=useRef(false),canWrite=!!boot.user&&userCan(boot.user,'leads:write');
   useEffect(()=>{if(canWrite){const controller=new AbortController();request<{rows:LeadTeamMember[]}>('leads/team',undefined,controller.signal).then(value=>setTeam(value.rows)).catch(()=>{});return()=>controller.abort();}},[canWrite]);
   useEffect(()=>{
     const controller=new AbortController();setLoading(true);setError('');

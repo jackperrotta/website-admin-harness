@@ -1,3 +1,4 @@
+import {webmasterUser} from '../../webmaster.ts';
 import {can, isLoopback, type AdminManifest, type User} from '../../../../contracts/src/index.ts';
 import {emptySchedulingConfig, parseSchedulingConfig, type CalendarProvider, type CalendarConnectionsResponse, type SchedulingAppointment} from '../../../../contracts/src/scheduling.ts';
 import {CalendarError, type CalendarEnv, type CalendarTokens, type ConnectionRow, type CalendarSelection, type EventLink, type CalendarAppointmentRow, type RemoteEvent, type ExportEvent} from './types.ts';
@@ -88,6 +89,7 @@ export class CalendarService {
     const flow = await this.db.prepare('DELETE FROM calendar_oauth_flows WHERE state_hash=? AND site_id=? AND provider=? AND cookie_hash=? AND expires_at>? RETURNING *').bind(await digest(state), this.site, provider, await digest(cookie), Date.now()).first<{user_id: string; resource_id: string; connection_id: string; verifier_cipher: string}>();
     if (!flow) throw new CalendarError(403, 'calendar_invalid_state', 'The calendar connection link expired or was already used.');
     const user = await this.db.prepare('SELECT id,email,role FROM users WHERE id=? AND active=1').bind(flow.user_id).first<User>();
+    if(user){const current=await webmasterUser(this.db,this.manifest,user);if(!current||current.webmaster)throw new CalendarError(403,'calendar_forbidden','Webmaster management does not grant calendar access.');}
     if (!user) throw new CalendarError(403, 'calendar_forbidden', 'Calendar connection access was revoked.');
     await this.authorize(user, flow.resource_id);
     const code = url.searchParams.get('code');

@@ -63,6 +63,8 @@ Use [Stripe test clocks](https://docs.stripe.com/billing/testing/test-clocks/api
 
 ## Separate client admin access
 
+An optional **Managed by Webmaster** relationship uses `refs/webmaster.md`. It identifies the managing organization and records whether it also provides billing, but grants no billing access or automatic pairing. A management-only relationship requires no billing module. Keep client billing independent so disconnecting management access preserves subscription visibility and the customer's payment-management route.
+
 Create a random customer-specific machine token privately, install it as `BILLING_ACCOUNT_TOKEN` on that client’s Worker, and store only its SHA-256 digest in the seller’s private `grants` configuration. Pin the local billing customer ID, caller installation ID, site ID, exact admin origin, enabled state and management permission. Use one grant per permitted client installation. An admin covering multiple websites must be allowed to see that entire billing customer account before receiving a grant.
 
 Register `createBillingAccount({sellerOrigin, sellerInstallationId, sellerSiteId, grantId, customerId, mode})` under the `account-billing` ID in the client’s two Worker entry points and enable it explicitly. It uses the client’s existing active-account checks and billing capabilities. The browser never receives the seller’s Stripe key or the machine token. The server resolves the customer from the grant and refuses arbitrary destinations, redirects, foreign invoice IDs and mismatched installation identities. Production seller origins must be approved public HTTPS origins; loopback pairing is local-only.

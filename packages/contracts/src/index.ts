@@ -7,6 +7,7 @@ export * from './stripe-billing.ts';
 export * from './client-portfolio.ts';
 export * from './client-onboarding.ts';
 export * from './scheduling.ts';
+export * from './webmaster.ts';
 export const contractVersion = 1;
 export const coreSections = ['overview', 'leads', 'analytics', 'settings', 'access', 'activity'] as const;
 export const permissions = ['leads:read', 'leads:write', 'analytics:read', 'settings:write', 'access:read', 'access:write', 'activity:read', 'tasks:read', 'tasks:write', ...schedulingPermissions, ...clientPortfolioPermissions, ...clientOnboardingPermissions, ...billingPermissions] as const;
@@ -47,7 +48,8 @@ export interface ModuleDefinition {
   id: string; version: number; label: string; permission: Permission;
   description: string;
 }
-export interface User {id: string; email: string; role: Role}
+export interface User {id: string; email: string; role: Role; webmaster?:{organizationId:string;organizationName:string;permissions:Permission[];revision:number}}
+export function userCan(user:User, permission:Permission) {return user.webmaster ? user.webmaster.permissions.includes(permission) : can(user.role,permission);}
 export interface BootstrapResponse {
   manifest: AdminManifest; user: User | null; passwordLogin: boolean;
   localDemo: boolean; connected: boolean; modules: ModuleDefinition[]; capabilities: string[];
@@ -55,6 +57,7 @@ export interface BootstrapResponse {
   accountAuth?: AccountCapabilities;
   emailLoginConfigured?: boolean;
   privateLocalSignIn?: boolean;
+  webmasterEnabled?: boolean;
 }
 export type DataSource = 'synthetic' | 'connected' | 'not-connected';
 export interface LeadRow {
@@ -87,7 +90,7 @@ export interface AccountCapabilities {enabled:boolean;emailReady:boolean;setupAv
 export interface AccountAction {purpose:'owner'|'invite'|'verify'|'reset';email:string;expiresAt:number;business:string}
 export interface TeamInvitation {id:string;email:string;role:string;expiresAt:number;status:'accepted'|'canceled'|'expired'|'pending';delivery:'pending'|'sending'|'sent'|'failed'|'superseded'}
 export interface AccessResponse extends RowsResponse<AccessRow & {email_verified_at?:number|null}> {invitations?:TeamInvitation[];accountAuth?:AccountCapabilities}
-export interface ActivityRow {id: string; actor: string; action: string; created_at: string}
+export interface ActivityRow {id: string; actor: string; action: string; created_at: string; person_id?:string|null;organization_id?:string|null;organization_name?:string|null}
 export interface TaskRow {id: string; title: string; done: number}
 export interface RowsResponse<T> {rows: T[]; message?: string}
 export interface ModuleRow {id?: string; title?: string; name?: string}

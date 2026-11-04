@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.1.0 — 2026-11-04
+
+- Added an opt-in Managed by Webmaster connection in Settings, with owner-approved operational grants, optional lead access and billing-provider identification, persistent revocation and person/organization activity attribution. Management-only sites need no billing integration. Disconnecting access preserves independently configured client billing and existing subscriptions. Includes additive migration `0011_webmaster_connections.sql`; installations require an explicit module and migration review.
+
 ## 1.0.0 â€” 2026-11-04
 
 The first stable Website Admin Harness release. The runtime, contracts and installation initializer use synchronized version 1.0.0 and npm's latest tag.

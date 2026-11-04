@@ -17,3 +17,5 @@ Filter records by `manifest.site.id`. Bind SQL parameters. Bound request bodies 
 New module scaffolds use `modules/<slug>/index.ts` with `satisfies AdminModule`. Import that TypeScript definition into `worker.ts` and `worker.local.ts`. Run `npm run check` in the installation to verify both Workers and all module sources. Preserve existing installation entry points during upgrades; the initializer only writes new installations.
 
 `scheduling` is a built-in optional module. Do not scaffold or register an extension with that ID. Read `refs/scheduling.md` before enabling it or changing its contracts, schema, permissions or reservation rules. It currently accepts test appointments and captures jobs; it does not enable public booking. Opt-in Google/Outlook sync requires the separate setup in `calendar-sync.md`; test appointments write to enabled calendars.
+
+`webmaster` is another reserved built-in optional module. It appears as a connection in Settings, with no separate navigation entry. Read `refs/webmaster.md` for explicit owner configuration, scoped team access, persistent revocation and independent optional billing.

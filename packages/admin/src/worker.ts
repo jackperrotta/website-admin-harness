@@ -1,10 +1,11 @@
+import {webmasterModule,webmasterUser,webmasterRoute,webmasterSchema,resolveTeam,WebmasterError} from './webmaster.ts';
 import {AccountService,AccountError,type AccountEnv} from './accounts.ts';
 import {LeadError, listLeads, saveFollowUp, followUpInput, followUpsAvailable} from './leads.ts';
 import {NotificationService} from './scheduling/notifications.ts';
 import {PublicBooking} from './scheduling/public.ts';
 import type {BookingEnv} from './scheduling/booking-env.ts';
 import {passwordReady, verifyPassword} from './password.ts';
-import {parseManifest, validateModules, workQueueModule, can, isLoopback, type AdminManifest, type User, type BootstrapResponse, type LeadsResponse, type LeadRow, type AnalyticsResponse, type AnalyticsRow, type SettingsResponse, type RowsResponse, type AccessRow, type ActivityRow, type TaskRow, type Permission} from '../../contracts/src/index.ts';
+import {parseManifest, validateModules, workQueueModule, userCan, isLoopback, type AdminManifest, type User, type BootstrapResponse, type LeadsResponse, type LeadRow, type AnalyticsResponse, type AnalyticsRow, type SettingsResponse, type RowsResponse, type AccessRow, type ActivityRow, type TaskRow, type Permission} from '../../contracts/src/index.ts';
 import {harnessRequest,HarnessError,type HarnessEnv} from './harness.ts';
 import {schedulingModule, handleScheduling, hasSchedulingAccess} from './scheduling/module.ts';
 import {SchedulingError} from './scheduling/store.ts';
@@ -36,8 +37,12 @@ async function body(request: Request, maximum=8192) {
   for (const part of parts) {bytes.set(part, offset); offset += part.length;}
   try {const value: unknown = JSON.parse(new TextDecoder().decode(bytes)); if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(); return value as Record<string, unknown>;} catch {throw new HttpError(400, 'Invalid JSON object');}
 }
-function permission(user: User, value: Permission) {if (!can(user.role, value)) throw new HttpError(403, 'Your account does not have access to this action');}
-async function audit(env: AdminEnv, actor: string, action: string) {return env.DB.prepare('INSERT INTO audit(id,actor,action) VALUES(?,?,?)').bind(crypto.randomUUID(), actor, action).run();}
+function permission(user: User, value: Permission) {if (!userCan(user, value)) throw new HttpError(403, 'Your account does not have access to this action');}
+async function audit(env: AdminEnv, actor: string|User, action: string, manifest?:AdminManifest) {
+  const id=crypto.randomUUID(),statement=env.DB.prepare('INSERT INTO audit(id,actor,action) VALUES(?,?,?)').bind(id,typeof actor==='string'?actor:actor.email,action);
+  if(typeof actor!=='string'&&manifest&&await webmasterSchema(env.DB))return env.DB.batch([statement,env.DB.prepare('INSERT INTO webmaster_activity(audit_id,installation_id,site_id,admin_origin,person_id,organization_id,organization_name) VALUES(?,?,?,?,?,?,?)').bind(id,manifest.installationId,manifest.site.id,manifest.adminOrigin,actor.id,actor.webmaster?.organizationId||null,actor.webmaster?.organizationName||null)]);
+  return statement.run();
+}
 function local(manifest: AdminManifest, env: AdminEnv) {return env.MODE === 'local' && isLoopback(manifest.adminOrigin) && new URL(manifest.adminOrigin).protocol === 'http:';}
 function sessionCookie(raw: string, manifest: AdminManifest, clear = false) {
   const insecure = isLoopback(manifest.adminOrigin) && new URL(manifest.adminOrigin).protocol === 'http:';
@@ -47,14 +52,23 @@ async function session(env: AdminEnv, request: Request, manifest: AdminManifest)
   const name = isLoopback(manifest.adminOrigin) && new URL(manifest.adminOrigin).protocol === 'http:' ? 'vitris-admin-local' : cookieName;
   const raw = request.headers.get('cookie')?.split(';').map(x => x.trim()).find(x => x.startsWith(`${name}=`))?.slice(name.length + 1);
   if (!raw || raw.length > 200) return null;
-  return env.DB.prepare('SELECT u.id,u.email,u.role FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.digest=? AND s.expires_at>? AND u.active=1').bind(await digest(raw), now()).first<User>();
+  const user=await env.DB.prepare('SELECT u.id,u.email,u.role FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.digest=? AND s.expires_at>? AND u.active=1').bind(await digest(raw), now()).first<User>();
+  return user?webmasterUser(env.DB,manifest,user):null;
 }
 async function startSession(env: AdminEnv, userId: string, manifest: AdminManifest, revision?: number) {
+  const identity=await env.DB.prepare('SELECT id,email,role FROM users WHERE id=? AND active=1').bind(userId).first<User>();
+  const resolved=identity?await webmasterUser(env.DB,manifest,identity):null;
+  if(!resolved)throw new HttpError(401,'Management access has been revoked');
+  const fence=resolved.webmaster?' AND EXISTS(SELECT 1 FROM webmaster_members m JOIN webmaster_connections c USING(installation_id,site_id,admin_origin) WHERE m.installation_id=? AND m.site_id=? AND m.admin_origin=? AND m.user_id=? AND m.active=1 AND c.status=\'connected\' AND c.revision=?)':'';
+  const fenceArgs=resolved.webmaster?[manifest.installationId,manifest.site.id,manifest.adminOrigin,userId,resolved.webmaster.revision]:[];
   const raw = token();
   if(revision!==undefined){
-    const inserted=await env.DB.prepare('INSERT INTO sessions(digest,user_id,expires_at) SELECT ?,?,? WHERE EXISTS(SELECT 1 FROM users WHERE id=? AND active=1) AND COALESCE((SELECT revision FROM auth_profiles WHERE installation_id=? AND admin_origin=? AND user_id=?),0)=?').bind(await digest(raw),userId,now()+604800,userId,manifest.installationId,manifest.adminOrigin,userId,revision).run();
+    const inserted=await env.DB.prepare('INSERT INTO sessions(digest,user_id,expires_at) SELECT ?,?,? WHERE EXISTS(SELECT 1 FROM users WHERE id=? AND active=1) AND COALESCE((SELECT revision FROM auth_profiles WHERE installation_id=? AND admin_origin=? AND user_id=?),0)=?'+fence).bind(await digest(raw),userId,now()+604800,userId,manifest.installationId,manifest.adminOrigin,userId,revision,...fenceArgs).run();
     if(!inserted.meta.changes)throw new HttpError(401,'Your account changed. Sign in again.');
-  }else await env.DB.prepare('INSERT INTO sessions(digest,user_id,expires_at) VALUES(?,?,?)').bind(await digest(raw), userId, now() + 604800).run();
+  }else{
+    const inserted=await env.DB.prepare('INSERT INTO sessions(digest,user_id,expires_at) SELECT ?,?,? WHERE EXISTS(SELECT 1 FROM users WHERE id=? AND active=1)'+fence).bind(await digest(raw),userId,now()+604800,userId,...fenceArgs).run();
+    if(!inserted.meta.changes)throw new HttpError(401,'Your account changed. Sign in again.');
+  }
   return json({ok: true}, 200, {'set-cookie': sessionCookie(raw, manifest)});
 }
 async function seedDemo(env: AdminEnv, manifest: AdminManifest) {
@@ -72,7 +86,7 @@ async function seedDemo(env: AdminEnv, manifest: AdminManifest) {
 
 export function createAdmin(input: unknown, options: {modules?: AdminModule[]} = {}) {
   const manifest = parseManifest(input);
-  const modules = [workQueueModule, schedulingModule, ...(options.modules || [])]; validateModules(manifest, modules);
+  const modules = [workQueueModule, schedulingModule, webmasterModule, ...(options.modules || [])]; validateModules(manifest, modules);
   const hooks=(options.modules||[]).flatMap(module=>(module.hooks||[]).map(hook=>({...hook,moduleId:module.id})));
   if(hooks.some(h=>!new RegExp(`^/api/modules/${h.moduleId}/hooks/[a-z][a-z0-9-]*$`).test(h.path))||new Set(hooks.map(h=>h.path)).size!==hooks.length)throw new Error('Module hooks need unique exact paths within their own hooks namespace');
   return {async fetch(request: Request, env: AdminEnv, context?: ExecutionContext): Promise<Response> {
@@ -94,7 +108,7 @@ export function createAdmin(input: unknown, options: {modules?: AdminModule[]} =
       else if (!path.startsWith('/api/')) response = await env.ASSETS.fetch(request);
       else response = await api(request, env, manifest, local(manifest, env) && !(options.modules || []).some(m => manifest.modules.includes(m.id) && m.disableLocalDemo), path, url, options.modules || []);
     } catch (error) {
-      response = error instanceof LeadError || error instanceof AccountError || error instanceof HttpError || error instanceof HarnessError || error instanceof SchedulingError || error instanceof CalendarError ? json({error: error.message}, error.status) : json({error: 'The admin service could not complete this request. Check its database and bindings.'}, 500);
+      response = error instanceof WebmasterError || error instanceof LeadError || error instanceof AccountError || error instanceof HttpError || error instanceof HarnessError || error instanceof SchedulingError || error instanceof CalendarError ? json({error: error.message}, error.status) : json({error: 'The admin service could not complete this request. Check its database and bindings.'}, 500);
     }
     if(context&&request.method==='POST'&&response.ok&&/^\/api\/(auth|access\/invitations)/.test(new URL(request.url).pathname))context.waitUntil(new AccountService(env,manifest).tick().catch(()=>{}));
     const headers = new Headers(response.headers);
@@ -123,8 +137,8 @@ async function api(request: Request, env: AdminEnv, manifest: AdminManifest, dem
     let theme=manifest.theme||null;
     let themeStatus:BootstrapResponse['themeStatus']=theme?'installation':'default';
     if(manifest.backend){try{const status=await harnessRequest(manifest,env,'status');if(status.theme){theme=status.theme;themeStatus='website';}else if(!theme)themeStatus='unavailable';}catch{if(!theme)themeStatus='unavailable';}}
-    const schedulingAllowed = user && manifest.modules.includes('scheduling') ? await hasSchedulingAccess(env.DB, manifest.site.id, user) : false;
-    return json<BootstrapResponse>({manifest, theme, themeStatus, user, accountAuth:await accounts.capabilities(user), passwordLogin:passwordReady(env), emailLoginConfigured:!!env.AUTH_EMAIL && !!env.AUTH_FROM && !accounts.enabled, privateLocalSignIn:local(manifest,env) && !demo && !passwordReady(env) && !accounts.enabled && !env.AUTH_EMAIL, localDemo: demo && (!manifest.backend || isLoopback(manifest.backend.origin)), connected:!!manifest.backend, modules: enabled.filter(x => user && (x.id === 'scheduling' ? schedulingAllowed : can(user.role, x.permission))), capabilities: user ? ['leads','analytics','settings','access','activity'].filter(x => can(user.role, ({leads:'leads:read',analytics:'analytics:read',settings:'settings:write',access:'access:read',activity:'activity:read'} as Record<string,Permission>)[x])) : []});
+    const schedulingAllowed = user && !user.webmaster && manifest.modules.includes('scheduling') ? await hasSchedulingAccess(env.DB, manifest.site.id, user) : false;
+    return json<BootstrapResponse>({webmasterEnabled:manifest.modules.includes('webmaster'),manifest, theme, themeStatus, user, accountAuth:await accounts.capabilities(user), passwordLogin:passwordReady(env), emailLoginConfigured:!!env.AUTH_EMAIL && !!env.AUTH_FROM && !accounts.enabled, privateLocalSignIn:local(manifest,env) && !demo && !passwordReady(env) && !accounts.enabled && !env.AUTH_EMAIL, localDemo: demo && (!manifest.backend || isLoopback(manifest.backend.origin)), connected:!!manifest.backend, modules: enabled.filter(x => user && (x.id === 'scheduling' ? schedulingAllowed : userCan(user, x.permission))), capabilities: user ? ['leads','analytics','settings','access','activity'].filter(x => x==='settings'&&manifest.modules.includes('webmaster')||userCan(user, ({leads:'leads:read',analytics:'analytics:read',settings:'settings:write',access:'access:read',activity:'activity:read'} as Record<string,Permission>)[x])) : []});
   }
   const publicAccount=await accounts.publicRoute(request,path);if(publicAccount)return publicAccount;
   if(accounts.enabled&&['/api/auth/request','/api/auth/confirm'].includes(path))throw new HttpError(404,'Not found');
@@ -148,9 +162,11 @@ async function api(request: Request, env: AdminEnv, manifest: AdminManifest, dem
     // Membership is checked again when creating the session and on every request.
     const active=await env.DB.prepare('SELECT id FROM users WHERE id=? AND active=1').bind(user.id).first();
     if (!active) throw new HttpError(401,'Email or password is incorrect');
-    await audit(env,user.id,'Signed in with password');
+    const identity=await webmasterUser(env.DB,manifest,user);if(!identity)throw new HttpError(401,'Management access has been revoked');
+    const response=await startSession(env,user.id,manifest,revision);
+    await audit(env,identity,'Signed in with password',manifest);
     await env.DB.prepare('DELETE FROM auth_limits WHERE expires_at<?').bind(now()).run();
-    return startSession(env,user.id,manifest,revision);
+    return response;
   }
   if (path === '/api/auth/request' && method === 'POST') {
     const data = await body(request);
@@ -178,9 +194,11 @@ async function api(request: Request, env: AdminEnv, manifest: AdminManifest, dem
     if (typeof data.token !== 'string' || data.token.length !== 72) throw new HttpError(400, 'Invalid sign-in link');
     const accepted = await env.DB.prepare('DELETE FROM login_tokens WHERE digest=? AND expires_at>? RETURNING user_id').bind(await digest(data.token), now()).first<{user_id:string}>();
     if (!accepted) throw new HttpError(401, 'This sign-in link has expired or was already used');
-    const active = await env.DB.prepare('SELECT id FROM users WHERE id=? AND active=1').bind(accepted.user_id).first();
+    const active = await env.DB.prepare('SELECT id,email,role FROM users WHERE id=? AND active=1').bind(accepted.user_id).first<User>();
     if (!active) throw new HttpError(401,'Access has been revoked');
-    await audit(env, accepted.user_id, 'Signed in'); return startSession(env, accepted.user_id, manifest);
+    const identity=await webmasterUser(env.DB,manifest,active);if(!identity)throw new HttpError(401,'Management access has been revoked');
+    const response=await startSession(env,accepted.user_id,manifest);
+    await audit(env,identity,'Signed in',manifest); return response;
   }
   const user = await session(env,request,manifest);
   if (!user) throw new HttpError(401,'Sign in to continue');
@@ -191,6 +209,10 @@ async function api(request: Request, env: AdminEnv, manifest: AdminManifest, dem
     return json({ok:true},200,{'set-cookie':sessionCookie('',manifest,true)});
   }
   const site = manifest.site.id;
+  if(path==='/api/modules/webmaster'||path.startsWith('/api/modules/webmaster/')){
+    if(!manifest.modules.includes('webmaster'))throw new HttpError(404,'Module is disabled');
+    return webmasterRoute(env.DB,manifest,user,request,method==='POST'?await body(request,32768):undefined);
+  }
   if(path==='/api/connection'&&method==='GET'){
     if(!manifest.backend)return json({connected:false,message:'No website backend configured'});
     const status=await harnessRequest(manifest,env,'status');
@@ -198,14 +220,14 @@ async function api(request: Request, env: AdminEnv, manifest: AdminManifest, dem
   }
   if (path === '/api/leads' && method === 'GET') {
     permission(user,'leads:read');
-    if(manifest.backend)return json(await harnessRequest(manifest,env,'leads',{mode:url.searchParams.get('mode')==='test'?'test':'production',leadQuery:url.searchParams}));
+    if(manifest.backend){const result=await harnessRequest(manifest,env,'leads',{mode:url.searchParams.get('mode')==='test'?'test':'production',leadQuery:url.searchParams});return json({...result,writable:userCan(user,'leads:write')?result.writable:false});}
     if(url.searchParams.get('mode')==='test')return json<LeadsResponse>({rows:[],source:demo?'synthetic':'not-connected',mode:'test',writable:false,message:'No collecting website backend is connected to this local demo. Test submissions will appear after a harness connection is configured.'});
     const result = await listLeads(env.DB,site,manifest.installationId,url.searchParams,'site_id');
-    return json({...result,writable:can(user.role,'leads:write'),source:demo?'synthetic':'not-connected', message:demo?'Synthetic records for this local installation.':'Website form ingestion is not connected yet.'});
+    return json({...result,writable:userCan(user,'leads:write'),source:demo?'synthetic':'not-connected', message:demo?'Synthetic records for this local installation.':'Website form ingestion is not connected yet.'});
   }
   if(path==='/api/leads/team'&&method==='GET'){
     permission(user,'leads:write');
-    return json({rows:(await env.DB.prepare("SELECT id,email FROM users WHERE active=1 AND role IN ('owner','administrator','editor') ORDER BY email LIMIT 200").all()).results});
+    return json({rows:(await resolveTeam(env.DB,manifest)).filter(member=>userCan(member,'leads:write')).map(({id,email})=>({id,email}))});
   }
   if(path==='/api/leads/follow-up'&&method==='POST'){
     permission(user,'leads:write');const value=await body(request,16384),parsed=followUpInput(value);
@@ -213,8 +235,9 @@ async function api(request: Request, env: AdminEnv, manifest: AdminManifest, dem
     // Validate assignments against this installation's active, lead-capable team.
     // Existing inactive assignments may be retained while editing notes.
     if(parsed.followUp.assignedTo){
-      const member=await env.DB.prepare("SELECT id FROM users WHERE id=? AND active=1 AND role IN ('owner','administrator','editor')").bind(parsed.followUp.assignedTo).first();
-      if(!member){
+      const candidate=await env.DB.prepare('SELECT id,email,role FROM users WHERE id=? AND active=1').bind(parsed.followUp.assignedTo).first<User>();
+      const member=candidate?await webmasterUser(env.DB,manifest,candidate):null;
+      if(!member||!userCan(member,'leads:write')){
         let previous:string|null|undefined;
         if(manifest.backend){const rows=await harnessRequest(manifest,env,'leads',{leadQuery:new URLSearchParams({id:parsed.id})});previous=rows.rows.find(row=>row.id===parsed.id)?.followUp?.assignedTo;}
         else previous=(await env.DB.prepare('SELECT assigned_to FROM lead_followups WHERE tenant_id=? AND installation_id=? AND lead_id=?').bind(site,manifest.installationId,parsed.id).first<{assigned_to:string}>())?.assigned_to;
@@ -222,15 +245,15 @@ async function api(request: Request, env: AdminEnv, manifest: AdminManifest, dem
       }
     }
     const result=manifest.backend?await harnessRequest(manifest,env,'leads/follow-up',{body:value}):await saveFollowUp(env.DB,site,manifest.installationId,value,'site_id');
-    await audit(env,user.email,'Updated lead follow-up');return json(result);
+    await audit(env,user,'Updated lead follow-up',manifest);return json(result);
   }
   if (path === '/api/leads/status' && method === 'POST') {
     permission(user,'leads:write'); const data = await body(request);
     if (!['new','contacted','closed'].includes(String(data.status)) || typeof data.id !== 'string') throw new HttpError(400,'Invalid lead status');
-    if(manifest.backend){const result=await harnessRequest(manifest,env,'leads/status',{body:{id:data.id,status:data.status}});await audit(env,user.email,'Changed website lead status');return json(result);}
+    if(manifest.backend){const result=await harnessRequest(manifest,env,'leads/status',{body:{id:data.id,status:data.status}});await audit(env,user,'Changed website lead status',manifest);return json(result);}
     const updated = await env.DB.prepare('UPDATE leads SET status=? WHERE id=? AND site_id=? RETURNING id').bind(data.status,data.id,site).first();
     if (!updated) throw new HttpError(404,'Lead not found');
-    await audit(env,user.email,'Changed a lead status'); return json({ok:true});
+    await audit(env,user,'Changed a lead status',manifest); return json({ok:true});
   }
   if (path === '/api/analytics' && method === 'GET') {
     permission(user,'analytics:read'); const days = url.searchParams.get('days') === '30' ? 30 : 14;
@@ -249,14 +272,16 @@ async function api(request: Request, env: AdminEnv, manifest: AdminManifest, dem
     await env.DB.prepare('INSERT OR IGNORE INTO settings(site_id) VALUES(?)').bind(site).run();
     const updated = await env.DB.prepare('UPDATE settings SET notification_email=?,revision=revision+1 WHERE site_id=? AND revision=? RETURNING revision').bind(data.notification_email,site,data.revision).first();
     if (!updated) throw new HttpError(409,'Settings changed in another session. Reload before saving.');
-    await audit(env,user.email,'Updated notification preference (delivery integration pending)'); return json({ok:true,...updated, deliveryConnected:false});
+    await audit(env,user,'Updated notification preference (delivery integration pending)',manifest); return json({ok:true,...updated, deliveryConnected:false});
   }
   if (path === '/api/access' && method === 'GET') {
     permission(user,'access:read');
     if(accounts.enabled)return json(await accounts.list(user)); return json<RowsResponse<AccessRow>>({rows:(await env.DB.prepare('SELECT id,email,role,active FROM users ORDER BY email').all<AccessRow>()).results});
   }
   if (path === '/api/activity' && method === 'GET') {
-    permission(user,'activity:read'); return json<RowsResponse<ActivityRow>>({rows:(await env.DB.prepare('SELECT * FROM audit ORDER BY created_at DESC,rowid DESC LIMIT 100').all<ActivityRow>()).results});
+    permission(user,'activity:read');
+    const sql=await webmasterSchema(env.DB)?env.DB.prepare('SELECT a.*,w.person_id,w.organization_id,w.organization_name FROM audit a LEFT JOIN webmaster_activity w ON w.audit_id=a.id WHERE w.audit_id IS NULL OR (w.installation_id=? AND w.site_id=? AND w.admin_origin=?) ORDER BY a.created_at DESC,a.rowid DESC LIMIT 100').bind(manifest.installationId,site,manifest.adminOrigin):env.DB.prepare('SELECT * FROM audit ORDER BY created_at DESC,rowid DESC LIMIT 100');
+    return json<RowsResponse<ActivityRow>>({rows:(await sql.all<ActivityRow>()).results});
   }
   if (path.startsWith('/api/modules/work-queue')) {
     if (!manifest.modules.includes('work-queue')) throw new HttpError(404,'Module is disabled');
@@ -267,25 +292,26 @@ async function api(request: Request, env: AdminEnv, manifest: AdminManifest, dem
       permission(user,'tasks:write'); const data = await body(request);
       if (typeof data.title !== 'string' || !data.title.trim() || data.title.length > 180) throw new HttpError(400,'Enter a task with 1–180 characters');
       await env.DB.prepare('INSERT INTO tasks(id,site_id,title) VALUES(?,?,?)').bind(crypto.randomUUID(),site,data.title.trim()).run();
-      await audit(env,user.email,'Added a work queue task'); return json({ok:true},201);
+      await audit(env,user,'Added a work queue task',manifest); return json({ok:true},201);
     }
     if (path === '/api/modules/work-queue/status' && method === 'POST') {
       permission(user,'tasks:write'); const data = await body(request);
       if (typeof data.id !== 'string' || typeof data.done !== 'boolean') throw new HttpError(400,'Invalid task');
       const updated = await env.DB.prepare('UPDATE tasks SET done=? WHERE id=? AND site_id=? RETURNING id').bind(data.done?1:0,data.id,site).first();
       if (!updated) throw new HttpError(404,'Task not found');
-      await audit(env,user.email,'Updated a work queue task'); return json({ok:true});
+      await audit(env,user,'Updated a work queue task',manifest); return json({ok:true});
     }
   }
   if (path === '/api/modules/scheduling' || path.startsWith('/api/modules/scheduling/')) {
     if (!manifest.modules.includes('scheduling')) throw new HttpError(404,'Module is disabled');
-    return handleScheduling({request,env,manifest,user,require:p=>permission(user,p),audit:action=>audit(env,user.email,action)});
+    if(user.webmaster)throw new HttpError(403,'Scheduling requires a separate reviewed permission model');
+    return handleScheduling({request,env,manifest,user,require:p=>permission(user,p),audit:action=>audit(env,user,action,manifest)});
   }
   for (const extension of extensions) {
     if (path === `/api/modules/${extension.id}` || path.startsWith(`/api/modules/${extension.id}/`)) {
       if (!manifest.modules.includes(extension.id)) throw new HttpError(404,'Module is disabled');
       permission(user,extension.permission);
-      return extension.handle({request,env,manifest,user,require:p=>permission(user,p),audit:action=>audit(env,user.email,action)});
+      return extension.handle({request,env,manifest,user,require:p=>permission(user,p),audit:action=>audit(env,user,action,manifest)});
     }
   }
   throw new HttpError(404,'Not found');
