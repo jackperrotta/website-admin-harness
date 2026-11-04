@@ -15,6 +15,7 @@
     "check:privacy": "node --experimental-strip-types scripts/check-privacy.ts",
     "release:pack": "npm run check && node --experimental-strip-types scripts/pack-release.ts",
     "release:publish": "node --experimental-strip-types scripts/publish-release.ts",
+    "release:verify-packed": "node --experimental-strip-types scripts/verify-packed-release.ts",
     "release:verify": "node --experimental-strip-types scripts/verify-registry-install.ts",
     "scheduling:preview": "npm run build && node --experimental-strip-types scripts/scheduling-preview.ts",
     "booking:preview": "npm run build && node --experimental-strip-types scripts/booking-preview.ts",

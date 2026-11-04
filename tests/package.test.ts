@@ -3,7 +3,8 @@ import type {PackedPackage} from '../scripts/release-types.ts';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
-import {mkdtemp,readFile,writeFile,mkdir} from 'node:fs/promises';
+import {mkdtemp,readFile,writeFile,mkdir,copyFile} from 'node:fs/promises';
+import {createHash} from 'node:crypto';
 import {tmpdir} from 'node:os';
 import {join,resolve} from 'node:path';
 import {createPortfolioFixture} from './client-portfolio-fixture.ts';
@@ -16,9 +17,18 @@ const npm=(args: string[],cwd: string)=>execFileSync(process.execPath,[npmCLI!,.
 test('packed npm packages scaffold an external installation, agent kit, and safe website connection',async()=>{
   assert.ok(npmCLI,'Run tests using npm test');
   const root=await mkdtemp(join(tmpdir(),'vitris-admin-package-'));
-  const runtime=(JSON.parse(npm(['pack','--json','--pack-destination',root],resolve('packages/admin'))) as PackedPackage[])[0];
-  const initializer=(JSON.parse(npm(['pack','--json','--pack-destination',root],resolve('packages/create-admin'))) as PackedPackage[])[0];
-  const contracts=(JSON.parse(npm(['pack','--json','--pack-destination',root],resolve('packages/contracts'))) as PackedPackage[])[0];
+  const pack=async(directory:string):Promise<PackedPackage>=>{
+    const releaseDirectory=process.env.VITRIS_RELEASE_DIRECTORY;
+    if(!releaseDirectory)return (JSON.parse(npm(['pack','--json','--pack-destination',root],resolve(directory))) as PackedPackage[])[0];
+    const manifest=JSON.parse(await readFile(join(releaseDirectory,'manifest.json'),'utf8')) as {version:string;packages:PackedPackage[]};
+    const source=JSON.parse(await readFile(join(directory,'package.json'),'utf8')) as {name:string;version:string};
+    const packed=manifest.packages.find(candidate=>candidate.name===source.name);assert.ok(packed);assert.equal(packed.version,source.version);assert.equal(manifest.version,source.version);
+    assert.equal(packed.filename,packed.filename.split(/[\\/]/).at(-1));
+    const archive=join(releaseDirectory,packed.filename),bytes=await readFile(archive);
+    assert.equal('sha512-'+createHash('sha512').update(bytes).digest('base64'),packed.integrity);
+    await copyFile(archive,join(root,packed.filename));return packed;
+  };
+  const runtime=await pack('packages/admin'),initializer=await pack('packages/create-admin'),contracts=await pack('packages/contracts');
   for(const packed of [runtime,initializer,contracts])await assertSafeArchive(join(root,packed.filename));
   const paths=runtime.files.map(x=>x.path);
   assert.ok(paths.includes('dist/worker.js')&&paths.includes('dist/client/index.html')&&paths.includes('agent/WORKFLOW.md'));
