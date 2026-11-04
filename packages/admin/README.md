@@ -10,11 +10,11 @@ Repository: [jackperrotta/website-admin-harness](https://github.com/jackperrotta
 
 ## Local preview
 
-For the optional Vitris client-management variant, use `npm run vitris:preview`. See [the prototype walkthrough](docs/VITRIS-PROTOTYPE.md) for client analytics and the simulated website update/publishing flow. Other installations do not enable this module.
+For the optional Vitris client-management variant, use `npm run vitris:preview`. See [the prototype walkthrough](https://github.com/jackperrotta/website-admin-harness/blob/v1.0.0/docs/VITRIS-PROTOTYPE.md) for client analytics and the simulated website update/publishing flow. Other installations do not enable this module.
 
-For the optional billing prototype, use `npm run billing:preview`. Review the business dashboard at http://127.0.0.1:4394/#billing and the separate client admin at http://localhost:4395/#account-billing. See [the billing walkthrough](docs/BILLING-PROTOTYPE.md). All payments, invoices, and subscription actions are simulated; no Stripe account is connected.
+For the optional billing prototype, use `npm run billing:preview`. Review the business dashboard at http://127.0.0.1:4394/#billing and the separate client admin at http://localhost:4395/#account-billing. See [the billing walkthrough](https://github.com/jackperrotta/website-admin-harness/blob/v1.0.0/docs/BILLING-PROTOTYPE.md). All payments, invoices, and subscription actions are simulated; no Stripe account is connected.
 
-The separate [Stripe integration](docs/STRIPE-BILLING.md) is opt-in installation infrastructure, exported through `/billing`. Each business configures its own account, prices, currency, portal policy and client grants. Read [the agent setup workflow](packages/admin/agent/refs/billing.md); no Stripe module, customer, migration or financial action is enabled by default.
+The separate [Stripe integration](https://github.com/jackperrotta/website-admin-harness/blob/v1.0.0/docs/STRIPE-BILLING.md) is opt-in installation infrastructure, exported through `/billing`. Each business configures its own account, prices, currency, portal policy and client grants. Read [the agent setup workflow](https://github.com/jackperrotta/website-admin-harness/blob/v1.0.0/packages/admin/agent/refs/billing.md); no Stripe module, customer, migration or financial action is enabled by default.
 
 Requires Node.js 24 or newer.
 
@@ -41,17 +41,17 @@ The first supported production target is Cloudflare. Interfaces and export contr
 - Branded responsive shell with Overview, Leads, Analytics, Settings, Users and access, and Activity.
 - Lead search, status/due/assignee filters, follow-up notes and keyset pagination; analytics date ranges and history; saved notification preferences with revision conflict checks. Local previews use synthetic data, while configured backend connections read authoritative records.
 - Work queue module with persistent task creation and completion.
-- Opt-in [scheduling module](docs/SCHEDULING.md): day/week/agenda calendar, service and staff management, scoped availability, test appointments and atomic resource reservations. Google/Outlook calendar sync and calendar files are implemented in source; test-mode website bookings now use the same admin calendar.
+- Opt-in [scheduling module](https://github.com/jackperrotta/website-admin-harness/blob/v1.0.0/docs/SCHEDULING.md): day/week/agenda calendar, service and staff management, scoped availability, test appointments and atomic resource reservations. Google/Outlook calendar sync and calendar files are implemented in source; test-mode website bookings now use the same admin calendar.
 - Trusted build-time module handlers, explicit manifest enablement, permission checks, and generic record-list UI.
 - Canonical-host checks, CSRF Origin checks, D1 sessions, revocable account access, and opt-in owner setup, team invitations, verification and password recovery through Cloudflare Email Service.
 - npm runtime, initializer and validated contracts packages; generated installation projects; designated-owner setup; module scaffold and agent kit.
 - A connection planner that records public admin metadata in an existing website's launch.json while preserving its forms and backend origin.
-- Optional Stripe seller and client billing modules: approved subscription/one-off Checkout, invoice drafting and delivery, payment history, customer-bound invoice access and self-service through Stripe's customer portal. Each installation owns its Stripe account configuration and secrets; live writes require explicit activation. See [billing](docs/STRIPE-BILLING.md) and [rollout](docs/STRIPE-LIVE-ROLLOUT.md).
+- Optional Stripe seller and client billing modules: approved subscription/one-off Checkout, invoice drafting and delivery, payment history, customer-bound invoice access and self-service through Stripe's customer portal. Each installation owns its Stripe account configuration and secrets; live writes require explicit activation. See [billing](https://github.com/jackperrotta/website-admin-harness/blob/v1.0.0/docs/STRIPE-BILLING.md) and [rollout](https://github.com/jackperrotta/website-admin-harness/blob/v1.0.0/docs/STRIPE-LIVE-ROLLOUT.md).
 - Client-management and onboarding previews with reusable templates, editable questions, invitation flow and desktop/mobile layouts. These explicitly synthetic prototypes support agent-led adaptation; they do not provision or publish client websites.
 - Installation-scoped owner enrollment, team invitations, verification and password recovery, plus an explicit Pages adapter/private-mail bridge for existing installations that use it.
 - Publication privacy checks for Git candidates and actual npm archives, including staged credentials and private environment files.
 
-Pages and Media editing, arbitrary HTML editing and a page builder are outside scope. A future AI workflow will handle content and media. A configured harness connection reads authoritative production leads and analytics without copying records or replacing the form pipeline. Websites without collection must enable it separately. Saving notification preferences does not change live delivery. Ownership transfer, full exports/restores, and automatic cloud provisioning remain follow-up milestones. Authentication mail uses provider stubs in automated tests; each installation requires sender onboarding and delivery verification. See [account setup and recovery](packages/admin/agent/refs/accounts.md) for installation prerequisites and the existing-owner upgrade path. Scheduling retains explicit test-only booking safeguards; a stable package version does not activate live booking or live Stripe collection.
+Pages and Media editing, arbitrary HTML editing and a page builder are outside scope. A future AI workflow will handle content and media. A configured harness connection reads authoritative production leads and analytics without copying records or replacing the form pipeline. Websites without collection must enable it separately. Saving notification preferences does not change live delivery. Ownership transfer, full exports/restores, and automatic cloud provisioning remain follow-up milestones. Authentication mail uses provider stubs in automated tests; each installation requires sender onboarding and delivery verification. See [account setup and recovery](https://github.com/jackperrotta/website-admin-harness/blob/v1.0.0/packages/admin/agent/refs/accounts.md) for installation prerequisites and the existing-owner upgrade path. Scheduling retains explicit test-only booking safeguards; a stable package version does not activate live booking or live Stripe collection.
 
 ## Packages and installation
 
@@ -74,7 +74,7 @@ All maintained code uses strict TypeScript, including the CLI, scripts, tests, a
 
 The generated installation pins the exact runtime version. Run `npm install` in the generated directory. It contains separate production and local Wrangler configurations and a copied UI release. Future package updates must also update copied UI/migrations/agent material through a reviewed diff; automatic upgrade tooling is not available yet.
 
-Use `vitris-admin plan` to inspect setup prerequisites. It makes no cloud writes. D1/R2 creation, actual resource ownership, DNS/TLS, sender onboarding and production deployment need real account configuration. See [Cloudflare deployment](packages/admin/agent/refs/cloudflare.md).
+Use `vitris-admin plan` to inspect setup prerequisites. It makes no cloud writes. D1/R2 creation, actual resource ownership, DNS/TLS, sender onboarding and production deployment need real account configuration. See [Cloudflare deployment](https://github.com/jackperrotta/website-admin-harness/blob/v1.0.0/packages/admin/agent/refs/cloudflare.md).
 
 ## Website harness setup
 
@@ -92,7 +92,7 @@ The backend must already implement the Vitris admin v1 API. Setup does not add t
 
 ## Website agent integration
 
-The generated `AGENTS.md` points agents to [the backend workflow](packages/admin/agent/WORKFLOW.md). The workflow covers schema, permissions, module code, migrations, verification and release evidence. This gives a website agent instructions for changing the backend without introducing an always-running agent inside the service.
+The generated `AGENTS.md` points agents to [the backend workflow](https://github.com/jackperrotta/website-admin-harness/blob/v1.0.0/packages/admin/agent/WORKFLOW.md). The workflow covers schema, permissions, module code, migrations, verification and release evidence. This gives a website agent instructions for changing the backend without introducing an always-running agent inside the service.
 
 From an installation, use:
 
@@ -116,8 +116,8 @@ Checks include TypeScript, production builds, manifest/role tests, workerd/D1 in
 
 MIT licensed. Each installation's customer data and infrastructure credentials remain private.
 
-Calendar synchronization source and local preview: see [setup and operations](packages/admin/agent/refs/calendar-sync.md). Google/Outlook apps are business-owned; calendar attachments and opt-in customer email/management links are implemented; real sender/inbox acceptance remains separate.
+Calendar synchronization source and local preview: see [setup and operations](https://github.com/jackperrotta/website-admin-harness/blob/v1.0.0/packages/admin/agent/refs/calendar-sync.md). Google/Outlook apps are business-owned; calendar attachments and opt-in customer email/management links are implemented; real sender/inbox acceptance remains separate.
 
-Standard website guest bookings are opt-in; read [setup and verification](packages/admin/agent/refs/public-booking.md) before enabling them.
+Standard website guest bookings are opt-in; read [setup and verification](https://github.com/jackperrotta/website-admin-harness/blob/v1.0.0/packages/admin/agent/refs/public-booking.md) before enabling them.
 
-Customer email and private cancellation/rescheduling link setup: [reference](packages/admin/agent/refs/customer-notifications.md).
+Customer email and private cancellation/rescheduling link setup: [reference](https://github.com/jackperrotta/website-admin-harness/blob/v1.0.0/packages/admin/agent/refs/customer-notifications.md).
