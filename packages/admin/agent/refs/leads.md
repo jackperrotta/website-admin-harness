@@ -1,0 +1,13 @@
+# Lead follow-up
+
+Version 1.0 includes server-side lead search, status/due/assignee filters, keyset pages, complete new-lead totals and per-enquiry follow-up. Never provision, migrate or deploy an existing backend as a setup side effect.
+
+Follow-up contains an active assigned teammate (or unassigned), private notes up to 3,000 characters, a UTC calendar date, completion and an optimistic revision. Saving never sends email or creates an appointment. A closed lead leaves the due queue; marking follow-up complete also clears it from that queue. Status and follow-up are separate deliberate actions. Concurrent edits return 409 and preserve the browser draft; reload the saved version explicitly before replacing it.
+
+Connected installations keep authoritative follow-up in the website backend, isolated by tenant and admin installation. Require the same dedicated server credential and leads:write grant as lead status changes, plus the signed-in role and exact mutation Origin. Test submissions remain read-only. The teammate picker exposes only this installation's active, lead-capable users. An inactive existing assignment may be retained while editing notes, but cannot receive new assignments. It can always be cleared.
+
+Standalone local records use additive `0010_lead_followups.sql` in this admin's own database. Connected website backends need the website harness's separate `0006_admin_lead_followups.sql` and compatible API code. Old rows are retained. No runtime route creates tables or migrates an installation. Missing migrations keep ordinary reads available and mark follow-up unavailable. Back up each intended database and review each package/schema change separately before any future rollout.
+
+`GET /api/leads` accepts `limit` (1–200), `q`, `status`, `queue=due`, `assignee`, an exact `id`, and an opaque `cursor`. Production responses may include `pagination: {version:1,total,newCount,nextCursor}` and `followUpsEnabled`. Search is literal (including percent/underscore), covers the full authorized history, and pagination orders created_at/id descending. Totals match search filters; newCount covers all production enquiries. Backend responses without this extension stay readable with an explicit latest-200 warning and local filtering. They cannot claim complete queue results or paginate.
+
+`GET /api/leads/team` requires leads:write. `POST /api/leads/follow-up` accepts exactly `{id,assignedTo,dueDate,notes,completed,revision}`; first save uses revision 0. Current backend v1 equivalents use `/leads` and `/leads/follow-up` with server credentials and installation identity. No browser receives backend credentials. The existing notification-email preference does not change actual form recipients or notification delivery.

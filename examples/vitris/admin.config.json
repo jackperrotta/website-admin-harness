@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "installationId": "vitris-prototype",
+  "business": {"name": "Vitris", "initials": "V"},
+  "site": {"id": "vitris-prototype", "name": "Vitris studio", "origin": "https://studio.example.test"},
+  "adminOrigin": "http://127.0.0.1:4393",
+  "modules": ["client-portfolio", "client-onboarding"]
+}

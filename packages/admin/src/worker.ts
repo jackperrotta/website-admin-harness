@@ -1,3 +1,5 @@
+import {AccountService,AccountError,type AccountEnv} from './accounts.ts';
+import {LeadError, listLeads, saveFollowUp, followUpInput, followUpsAvailable} from './leads.ts';
 import {NotificationService} from './scheduling/notifications.ts';
 import {PublicBooking} from './scheduling/public.ts';
 import type {BookingEnv} from './scheduling/booking-env.ts';
@@ -10,12 +12,13 @@ import {CalendarService} from './scheduling/calendars/service.ts';
 import {CalendarError, type CalendarEnv} from './scheduling/calendars/types.ts';
 
 interface EmailBinding {send(message: {to: string; from: string; subject: string; text: string}): Promise<unknown>}
-export interface AdminEnv extends HarnessEnv, CalendarEnv, BookingEnv {
+export interface AdminEnv extends HarnessEnv, CalendarEnv, BookingEnv, AccountEnv {
   DB: D1Database; ASSETS: Pick<Fetcher, 'fetch'>; ASSET_STORE?: R2Bucket;
   MODE?: string; PASSWORD_LOGIN?: string; PASSWORD_PEPPER?: string; AUTH_EMAIL?: EmailBinding; AUTH_FROM?: string;
 }
 export interface ModuleContext {request: Request; env: AdminEnv; manifest: AdminManifest; user: User; require: (permission: Permission) => void; audit: (action: string) => Promise<unknown>}
-export interface AdminModule {id: string; version: number; label: string; permission: Permission; description: string; handle: (context: ModuleContext) => Promise<Response>}
+export interface ModuleServiceContext {request:Request;env:AdminEnv;manifest:AdminManifest;context?:ExecutionContext}
+export interface AdminModule {id: string; version: number; label: string; permission: Permission; description: string; ui?:'stripe-billing'|'stripe-account'; disableLocalDemo?: true; handle: (context: ModuleContext) => Promise<Response>; hooks?:readonly {path:string;handle:(context:ModuleServiceContext)=>Promise<Response>}[]; scheduled?:(env:AdminEnv,manifest:AdminManifest)=>Promise<void>}
 const now = () => Math.floor(Date.now() / 1000);
 const cookieName = '__Host-vitris-admin';
 async function digest(value: string) {
@@ -24,11 +27,11 @@ async function digest(value: string) {
 function token() {return crypto.randomUUID() + crypto.randomUUID();}
 function json<T>(value: T, status = 200, headers: HeadersInit = {}) {return new Response(JSON.stringify(value), {status, headers: {'content-type': 'application/json', ...headers}});}
 class HttpError extends Error {constructor(public status: number, message: string) {super(message);}}
-async function body(request: Request) {
+async function body(request: Request, maximum=8192) {
   if (!request.headers.get('content-type')?.startsWith('application/json')) throw new HttpError(415, 'JSON is required');
   const reader = request.body?.getReader(); let length = 0; const parts: Uint8Array[] = [];
   if (!reader) throw new HttpError(400, 'Request body is required');
-  for (;;) {const {done, value} = await reader.read(); if (done) break; length += value.length; if (length > 8192) {await reader.cancel(); throw new HttpError(413, 'Request too large');} parts.push(value);}
+  for (;;) {const {done, value} = await reader.read(); if (done) break; length += value.length; if (length > maximum) {await reader.cancel(); throw new HttpError(413, 'Request too large');} parts.push(value);}
   const bytes = new Uint8Array(length); let offset = 0;
   for (const part of parts) {bytes.set(part, offset); offset += part.length;}
   try {const value: unknown = JSON.parse(new TextDecoder().decode(bytes)); if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(); return value as Record<string, unknown>;} catch {throw new HttpError(400, 'Invalid JSON object');}
@@ -46,9 +49,12 @@ async function session(env: AdminEnv, request: Request, manifest: AdminManifest)
   if (!raw || raw.length > 200) return null;
   return env.DB.prepare('SELECT u.id,u.email,u.role FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.digest=? AND s.expires_at>? AND u.active=1').bind(await digest(raw), now()).first<User>();
 }
-async function startSession(env: AdminEnv, userId: string, manifest: AdminManifest) {
+async function startSession(env: AdminEnv, userId: string, manifest: AdminManifest, revision?: number) {
   const raw = token();
-  await env.DB.prepare('INSERT INTO sessions(digest,user_id,expires_at) VALUES(?,?,?)').bind(await digest(raw), userId, now() + 604800).run();
+  if(revision!==undefined){
+    const inserted=await env.DB.prepare('INSERT INTO sessions(digest,user_id,expires_at) SELECT ?,?,? WHERE EXISTS(SELECT 1 FROM users WHERE id=? AND active=1) AND COALESCE((SELECT revision FROM auth_profiles WHERE installation_id=? AND admin_origin=? AND user_id=?),0)=?').bind(await digest(raw),userId,now()+604800,userId,manifest.installationId,manifest.adminOrigin,userId,revision).run();
+    if(!inserted.meta.changes)throw new HttpError(401,'Your account changed. Sign in again.');
+  }else await env.DB.prepare('INSERT INTO sessions(digest,user_id,expires_at) VALUES(?,?,?)').bind(await digest(raw), userId, now() + 604800).run();
   return json({ok: true}, 200, {'set-cookie': sessionCookie(raw, manifest)});
 }
 async function seedDemo(env: AdminEnv, manifest: AdminManifest) {
@@ -67,25 +73,30 @@ async function seedDemo(env: AdminEnv, manifest: AdminManifest) {
 export function createAdmin(input: unknown, options: {modules?: AdminModule[]} = {}) {
   const manifest = parseManifest(input);
   const modules = [workQueueModule, schedulingModule, ...(options.modules || [])]; validateModules(manifest, modules);
-  return {async fetch(request: Request, env: AdminEnv): Promise<Response> {
+  const hooks=(options.modules||[]).flatMap(module=>(module.hooks||[]).map(hook=>({...hook,moduleId:module.id})));
+  if(hooks.some(h=>!new RegExp(`^/api/modules/${h.moduleId}/hooks/[a-z][a-z0-9-]*$`).test(h.path))||new Set(hooks.map(h=>h.path)).size!==hooks.length)throw new Error('Module hooks need unique exact paths within their own hooks namespace');
+  return {async fetch(request: Request, env: AdminEnv, context?: ExecutionContext): Promise<Response> {
     let response: Response;
     try {
       const url = new URL(request.url); const path = url.pathname;
       if (url.origin !== manifest.adminOrigin) throw new HttpError(421, 'This hostname is not configured for this installation');
       if (isLoopback(manifest.adminOrigin) && !local(manifest, env)) throw new HttpError(503, 'Local installation requires explicit local mode');
       const bookingRoute = path.startsWith('/api/booking/v1/');
-      if (!bookingRoute && !['GET','HEAD'].includes(request.method) && request.headers.get('origin') !== manifest.adminOrigin) throw new HttpError(403, 'Origin check failed');
+      const hook=hooks.find(h=>h.path===path);
+      if (!bookingRoute && !hook && !['GET','HEAD'].includes(request.method) && request.headers.get('origin') !== manifest.adminOrigin) throw new HttpError(403, 'Origin check failed');
       const calendarCallback = path.match(/^\/api\/scheduling\/oauth\/(google|microsoft)\/callback$/);
-      if (bookingRoute) response = await new PublicBooking(env, manifest).handle(request);
+      if(hook){if(!manifest.modules.includes(hook.moduleId))throw new HttpError(404,'Module is disabled');if(request.method!=='POST')throw new HttpError(405,'Method not allowed');response=await hook.handle({request,env,manifest,context});}
+      else if (bookingRoute) response = await new PublicBooking(env, manifest).handle(request);
       else if (calendarCallback && request.method === 'GET') {
         if (!manifest.modules.includes('scheduling')) throw new HttpError(404,'Module is disabled');
         response = await new CalendarService(env, manifest).complete(request, calendarCallback[1] as 'google' | 'microsoft');
       }
       else if (!path.startsWith('/api/')) response = await env.ASSETS.fetch(request);
-      else response = await api(request, env, manifest, local(manifest, env), path, url, options.modules || []);
+      else response = await api(request, env, manifest, local(manifest, env) && !(options.modules || []).some(m => manifest.modules.includes(m.id) && m.disableLocalDemo), path, url, options.modules || []);
     } catch (error) {
-      response = error instanceof HttpError || error instanceof HarnessError || error instanceof SchedulingError || error instanceof CalendarError ? json({error: error.message}, error.status) : json({error: 'The admin service could not complete this request. Check its database and bindings.'}, 500);
+      response = error instanceof LeadError || error instanceof AccountError || error instanceof HttpError || error instanceof HarnessError || error instanceof SchedulingError || error instanceof CalendarError ? json({error: error.message}, error.status) : json({error: 'The admin service could not complete this request. Check its database and bindings.'}, 500);
     }
+    if(context&&request.method==='POST'&&response.ok&&/^\/api\/(auth|access\/invitations)/.test(new URL(request.url).pathname))context.waitUntil(new AccountService(env,manifest).tick().catch(()=>{}));
     const headers = new Headers(response.headers);
     headers.set('cache-control', 'no-store'); headers.set('x-content-type-options', 'nosniff');
     headers.set('referrer-policy', 'no-referrer'); headers.set('x-frame-options', 'DENY');
@@ -97,21 +108,26 @@ export function createAdmin(input: unknown, options: {modules?: AdminModule[]} =
     }
     return new Response(response.body, {status: response.status, headers});
   }, async scheduled(_controller: ScheduledController, env: AdminEnv) {
+    await new AccountService(env,manifest).tick();
     if (manifest.modules.includes('scheduling')) {await new CalendarService(env, manifest).tick(); await new NotificationService(env, manifest).tick();}
+    for(const module of options.modules||[])if(manifest.modules.includes(module.id)&&module.scheduled)await module.scheduled(env,manifest);
   }};
 }
 
 async function api(request: Request, env: AdminEnv, manifest: AdminManifest, demo: boolean, path: string, url: URL, extensions: AdminModule[]): Promise<Response> {
   const method = request.method;
-  const enabled = [workQueueModule, schedulingModule, ...extensions.map(({handle,...definition})=>definition)].filter(x => manifest.modules.includes(x.id));
+  const accounts=new AccountService(env,manifest);
+  const enabled = [workQueueModule, schedulingModule, ...extensions.map(({id,version,label,permission,description,ui})=>({id,version,label,permission,description,...(ui?{ui}:{})}))].filter(x => manifest.modules.includes(x.id));
   if (path === '/api/bootstrap' && method === 'GET') {
     const user = await session(env, request, manifest);
     let theme=manifest.theme||null;
     let themeStatus:BootstrapResponse['themeStatus']=theme?'installation':'default';
     if(manifest.backend){try{const status=await harnessRequest(manifest,env,'status');if(status.theme){theme=status.theme;themeStatus='website';}else if(!theme)themeStatus='unavailable';}catch{if(!theme)themeStatus='unavailable';}}
     const schedulingAllowed = user && manifest.modules.includes('scheduling') ? await hasSchedulingAccess(env.DB, manifest.site.id, user) : false;
-    return json<BootstrapResponse>({manifest, theme, themeStatus, user, passwordLogin:passwordReady(env), localDemo: demo && (!manifest.backend || isLoopback(manifest.backend.origin)), connected:!!manifest.backend, modules: enabled.filter(x => user && (x.id === 'scheduling' ? schedulingAllowed : can(user.role, x.permission))), capabilities: user ? ['leads','analytics','settings','access','activity'].filter(x => can(user.role, ({leads:'leads:read',analytics:'analytics:read',settings:'settings:write',access:'access:read',activity:'activity:read'} as Record<string,Permission>)[x])) : []});
+    return json<BootstrapResponse>({manifest, theme, themeStatus, user, accountAuth:await accounts.capabilities(user), passwordLogin:passwordReady(env), emailLoginConfigured:!!env.AUTH_EMAIL && !!env.AUTH_FROM && !accounts.enabled, privateLocalSignIn:local(manifest,env) && !demo && !passwordReady(env) && !accounts.enabled && !env.AUTH_EMAIL, localDemo: demo && (!manifest.backend || isLoopback(manifest.backend.origin)), connected:!!manifest.backend, modules: enabled.filter(x => user && (x.id === 'scheduling' ? schedulingAllowed : can(user.role, x.permission))), capabilities: user ? ['leads','analytics','settings','access','activity'].filter(x => can(user.role, ({leads:'leads:read',analytics:'analytics:read',settings:'settings:write',access:'access:read',activity:'activity:read'} as Record<string,Permission>)[x])) : []});
   }
+  const publicAccount=await accounts.publicRoute(request,path);if(publicAccount)return publicAccount;
+  if(accounts.enabled&&['/api/auth/request','/api/auth/confirm'].includes(path))throw new HttpError(404,'Not found');
   if (path === '/api/auth/demo' && method === 'POST') {
     if (!demo || manifest.backend && !isLoopback(manifest.backend.origin)) throw new HttpError(404, 'Not found');
     await seedDemo(env, manifest); return startSession(env, 'local-owner', manifest);
@@ -126,6 +142,7 @@ async function api(request: Request, env: AdminEnv, manifest: AdminManifest, dem
       if (!row || row.attempts>8) throw new HttpError(429,'Too many sign-in attempts. Try again later.');
     }
     const user=await env.DB.prepare('SELECT id,email,role FROM users WHERE email=? AND active=1').bind(email.length<=254?email:'').first<User>();
+    const revision=accounts.enabled?await accounts.credentialsRevision(user?.id||''):undefined;
     const valid=await verifyPassword(env,user?.id || '',data.password);
     if (!user || !valid) throw new HttpError(401,'Email or password is incorrect');
     // Membership is checked again when creating the session and on every request.
@@ -133,7 +150,7 @@ async function api(request: Request, env: AdminEnv, manifest: AdminManifest, dem
     if (!active) throw new HttpError(401,'Email or password is incorrect');
     await audit(env,user.id,'Signed in with password');
     await env.DB.prepare('DELETE FROM auth_limits WHERE expires_at<?').bind(now()).run();
-    return startSession(env,user.id,manifest);
+    return startSession(env,user.id,manifest,revision);
   }
   if (path === '/api/auth/request' && method === 'POST') {
     const data = await body(request);
@@ -167,6 +184,7 @@ async function api(request: Request, env: AdminEnv, manifest: AdminManifest, dem
   }
   const user = await session(env,request,manifest);
   if (!user) throw new HttpError(401,'Sign in to continue');
+  const accountRoute=await accounts.access(request,path,user);if(accountRoute)return accountRoute;
   if (path === '/api/auth/logout' && method === 'POST') {
     // Deleting all sessions for this user makes logout definitive across devices.
     await env.DB.prepare('DELETE FROM sessions WHERE user_id=?').bind(user.id).run();
@@ -180,10 +198,31 @@ async function api(request: Request, env: AdminEnv, manifest: AdminManifest, dem
   }
   if (path === '/api/leads' && method === 'GET') {
     permission(user,'leads:read');
-    if(manifest.backend)return json(await harnessRequest(manifest,env,'leads',{mode:url.searchParams.get('mode')==='test'?'test':'production'}));
+    if(manifest.backend)return json(await harnessRequest(manifest,env,'leads',{mode:url.searchParams.get('mode')==='test'?'test':'production',leadQuery:url.searchParams}));
     if(url.searchParams.get('mode')==='test')return json<LeadsResponse>({rows:[],source:demo?'synthetic':'not-connected',mode:'test',writable:false,message:'No collecting website backend is connected to this local demo. Test submissions will appear after a harness connection is configured.'});
-    const result = await env.DB.prepare('SELECT * FROM leads WHERE site_id=? ORDER BY created_at DESC LIMIT 200').bind(site).all<LeadRow>();
-    return json<LeadsResponse>({rows:result.results, source:demo?'synthetic':'not-connected', message:demo?'Synthetic records for this local installation.':'Website form ingestion is not connected yet.'});
+    const result = await listLeads(env.DB,site,manifest.installationId,url.searchParams,'site_id');
+    return json({...result,writable:can(user.role,'leads:write'),source:demo?'synthetic':'not-connected', message:demo?'Synthetic records for this local installation.':'Website form ingestion is not connected yet.'});
+  }
+  if(path==='/api/leads/team'&&method==='GET'){
+    permission(user,'leads:write');
+    return json({rows:(await env.DB.prepare("SELECT id,email FROM users WHERE active=1 AND role IN ('owner','administrator','editor') ORDER BY email LIMIT 200").all()).results});
+  }
+  if(path==='/api/leads/follow-up'&&method==='POST'){
+    permission(user,'leads:write');const value=await body(request,16384),parsed=followUpInput(value);
+    if(!manifest.backend&&!await followUpsAvailable(env.DB))throw new LeadError(503,'Lead follow-up requires the reviewed database migration');
+    // Validate assignments against this installation's active, lead-capable team.
+    // Existing inactive assignments may be retained while editing notes.
+    if(parsed.followUp.assignedTo){
+      const member=await env.DB.prepare("SELECT id FROM users WHERE id=? AND active=1 AND role IN ('owner','administrator','editor')").bind(parsed.followUp.assignedTo).first();
+      if(!member){
+        let previous:string|null|undefined;
+        if(manifest.backend){const rows=await harnessRequest(manifest,env,'leads',{leadQuery:new URLSearchParams({id:parsed.id})});previous=rows.rows.find(row=>row.id===parsed.id)?.followUp?.assignedTo;}
+        else previous=(await env.DB.prepare('SELECT assigned_to FROM lead_followups WHERE tenant_id=? AND installation_id=? AND lead_id=?').bind(site,manifest.installationId,parsed.id).first<{assigned_to:string}>())?.assigned_to;
+        if(previous!==parsed.followUp.assignedTo)throw new HttpError(400,'Choose an active teammate who can manage leads');
+      }
+    }
+    const result=manifest.backend?await harnessRequest(manifest,env,'leads/follow-up',{body:value}):await saveFollowUp(env.DB,site,manifest.installationId,value,'site_id');
+    await audit(env,user.email,'Updated lead follow-up');return json(result);
   }
   if (path === '/api/leads/status' && method === 'POST') {
     permission(user,'leads:write'); const data = await body(request);
@@ -213,7 +252,8 @@ async function api(request: Request, env: AdminEnv, manifest: AdminManifest, dem
     await audit(env,user.email,'Updated notification preference (delivery integration pending)'); return json({ok:true,...updated, deliveryConnected:false});
   }
   if (path === '/api/access' && method === 'GET') {
-    permission(user,'access:read'); return json<RowsResponse<AccessRow>>({rows:(await env.DB.prepare('SELECT id,email,role,active FROM users ORDER BY email').all<AccessRow>()).results});
+    permission(user,'access:read');
+    if(accounts.enabled)return json(await accounts.list(user)); return json<RowsResponse<AccessRow>>({rows:(await env.DB.prepare('SELECT id,email,role,active FROM users ORDER BY email').all<AccessRow>()).results});
   }
   if (path === '/api/activity' && method === 'GET') {
     permission(user,'activity:read'); return json<RowsResponse<ActivityRow>>({rows:(await env.DB.prepare('SELECT * FROM audit ORDER BY created_at DESC,rowid DESC LIMIT 100').all<ActivityRow>()).results});

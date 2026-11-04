@@ -1,10 +1,26 @@
 {
   "name": "@tryvitris/website-admin-harness",
-  "version": "0.1.0-alpha.2",
+  "version": "1.0.0",
   "type": "module",
   "license": "MIT",
   "description": "Cloudflare business admin runtime and agent kit",
   "exports": {
+    "./prototypes/client-onboarding": {
+      "types": "./dist/client-onboarding.d.ts",
+      "default": "./dist/client-onboarding.js"
+    },
+    "./billing": {
+      "types": "./dist/stripe-billing.d.ts",
+      "default": "./dist/stripe-billing.js"
+    },
+    "./prototypes/billing": {
+      "types": "./dist/billing-prototype.d.ts",
+      "default": "./dist/billing-prototype.js"
+    },
+    "./prototypes/client-portfolio": {
+      "types": "./dist/client-portfolio.d.ts",
+      "default": "./dist/client-portfolio.js"
+    },
     "./worker": {
       "types": "./dist/worker.d.ts",
       "default": "./dist/worker.js"
@@ -12,23 +28,47 @@
     "./cli": {
       "types": "./bin/admin.d.mts",
       "default": "./bin/admin.mjs"
+    },
+    "./pages": {
+      "types": "./dist/pages.d.ts",
+      "default": "./dist/pages.js"
+    },
+    "./account-mail": {
+      "types": "./dist/account-mail.d.ts",
+      "default": "./dist/account-mail.js"
     }
   },
   "bin": {
     "vitris-admin": "bin/admin.mjs"
   },
   "files": [
+    "dist/client-onboarding.js",
+    "dist/client-onboarding.d.ts",
+    "dist/stripe-billing.js",
+    "dist/stripe-billing.d.ts",
+    "dist/stripe-billing-env.d.ts",
+    "modules",
+    "dist/billing-prototype.js",
+    "dist/billing-prototype.d.ts",
+    "dist/client-portfolio.js",
+    "dist/client-portfolio.d.ts",
+    "prototypes",
     "dist/worker.js",
     "dist/worker.d.ts",
     "dist/harness.d.ts",
     "dist/calendar.d.ts",
     "dist/booking.d.ts",
+    "dist/accounts.d.ts",
     "dist/contracts",
     "dist/client",
     "migrations",
     "agent",
     "bin/*.mjs",
-    "bin/*.d.mts"
+    "bin/*.d.mts",
+    "dist/pages.js",
+    "dist/pages.d.ts",
+    "dist/account-mail.js",
+    "dist/account-mail.d.ts"
   ],
   "dependencies": {
     "react": "^19.0.0",
@@ -36,7 +76,7 @@
   },
   "publishConfig": {
     "access": "public",
-    "tag": "alpha"
+    "tag": "latest"
   },
   "engines": {
     "node": ">=24"

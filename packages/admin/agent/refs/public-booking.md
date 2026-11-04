@@ -18,7 +18,7 @@ This release retains **test-only appointment mode**. Opt-in customer emails, cal
 
 ## Public contract
 
-Import the DTOs and strict parsers from `@tryvitris/website-admin-contracts/scheduling` in a compatible source/release. The current published alpha does not contain this work.
+Import the DTOs and strict parsers from `@tryvitris/website-admin-contracts/scheduling` version 1.0 or a compatible later release.
 
 | Route | Behavior |
 | --- | --- |

@@ -1,6 +1,6 @@
 # Calendar synchronization setup and operations
 
-This unreleased source supports Google Calendar and Microsoft Outlook calendars for staff providers. It requires reviewed runtime packages, explicitly enabled scheduling, migrations through `0005_calendar_sync.sql`, business-owned OAuth apps, and a scheduled Worker. Nothing here provisions, deploys, or migrates a remote installation. The published `0.1.0-alpha.1` does not contain these changes.
+Version 1.0 supports Google Calendar and Microsoft Outlook calendars for staff providers. It requires reviewed runtime packages, explicitly enabled scheduling, migrations through `0005_calendar_sync.sql`, business-owned OAuth apps, and a scheduled Worker. Nothing here provisions, deploys, or migrates a remote installation.
 
 ## Try it locally
 

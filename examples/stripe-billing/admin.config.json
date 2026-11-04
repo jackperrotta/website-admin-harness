@@ -1,0 +1,1 @@
+{"schemaVersion":1,"installationId":"stripe-sandbox-example","business":{"name":"Your business","initials":"YB"},"site":{"id":"stripe-sandbox-example","name":"Business website","origin":"https://business.example.test"},"adminOrigin":"http://127.0.0.1:4396","modules":["billing"]}

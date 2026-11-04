@@ -1,7 +1,16 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {registryPackage,waitForRegistry} from '../scripts/release-registry.ts';
-const pkg={name:'@tryvitris/example',version:'0.1.0-alpha.1',integrity:'sha512-reviewed'};
+import {stableRelease,releasePackageNames} from '../scripts/release-policy.ts';
+const pkg={name:'@tryvitris/example',version:'1.0.0',integrity:'sha512-reviewed'};
+test('stable publication requires matching package versions, latest tags and a pinned initializer',()=>{
+  const manifests=releasePackageNames.map(name=>({name,version:'1.0.0',publishConfig:{access:'public',tag:'latest'},dependencies:{'@tryvitris/website-admin-harness':'1.0.0'}}));
+  assert.deepEqual(stableRelease(manifests),{version:'1.0.0',tag:'latest'});
+  assert.throws(()=>stableRelease(manifests.map(manifest=>({...manifest,version:'1.0.0-alpha.1'}))),/stable/);
+  assert.throws(()=>stableRelease(manifests.map((manifest,index)=>index===1?{...manifest,version:'1.0.1'}:manifest)),/synchronized/);
+  assert.throws(()=>stableRelease(manifests.map(manifest=>({...manifest,publishConfig:{access:'public',tag:'alpha'}}))),/latest/);
+  assert.throws(()=>stableRelease(manifests.map(manifest=>({...manifest,dependencies:{'@tryvitris/website-admin-harness':'0.1.0'}}))),/pin/);
+});
 test('registry verification accepts only the exact reviewed package and archive',async()=>{
   const request=async()=>Response.json({...pkg,dist:{integrity:pkg.integrity}});
   const verified=await registryPackage(pkg,{request});assert.ok(verified);assert.equal(verified.verified,true);

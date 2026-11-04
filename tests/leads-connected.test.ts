@@ -1,0 +1,36 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {resolve} from 'node:path';
+import {createHash} from 'node:crypto';
+import {formsBackend} from '../../vitris-harness/src/test/forms-backend.ts';
+import {handleAdmin} from '../../vitris-harness/src/worker/admin.ts';
+import {createAdmin} from '../packages/admin/dist/worker.js';
+import type {AdminEnv} from '../packages/admin/src/worker.ts';
+
+test('current admin and website API pair colors, full lead history and follow-up without copying records',async t=>{
+ const backend=await formsBackend(resolve('../vitris-harness/migrations'),false),store=await formsBackend(resolve('packages/admin/migrations'),false);t.after(backend.dispose);t.after(store.dispose);
+ const hash=(value:string)=>createHash('sha256').update(value).digest('hex'),token='synthetic-source-pairing-token-at-least-32-characters';
+ await backend.env.DB.prepare("INSERT INTO tenants(id,slug,name) VALUES('tenant','tenant','Synthetic')").run();
+ await backend.env.DB.prepare('INSERT INTO theme(tenant_id,json) VALUES(?,?)').bind('tenant',JSON.stringify({colorAccent:'#7c2849',colorBg:'#fff8ef',colorAccentText:'#fff'})).run();
+ await backend.env.DB.batch(Array.from({length:205},(_,i)=>backend.env.DB.prepare("INSERT INTO leads(id,tenant_id,name,email,message) VALUES(?,'tenant',?,'synthetic@example.test','Source pairing fixture')").bind('lead-'+i,'Synthetic '+i)));
+ const grant={tenantId:'tenant',siteOrigin:'https://synthetic.example',tokenHash:hash(token),scopes:['leads:read','analytics:read','leads:write']};backend.env.ADMIN_CONNECTIONS=JSON.stringify({admin:grant});
+ const manifest={schemaVersion:1,installationId:'admin',business:{name:'Synthetic',initials:'S'},site:{id:'site',name:'Main',origin:grant.siteOrigin},adminOrigin:'https://admin.synthetic.example',modules:[],backend:{provider:'vitris-harness',origin:'https://backend.synthetic.example',tenantId:'tenant'}};
+ const app=createAdmin(manifest),db=store.env.DB;
+ await db.prepare("INSERT INTO users(id,email,role) VALUES('owner','owner@example.test','owner'),('reader','reader@example.test','analyst')").run();
+ for(const id of ['owner','reader'])await db.prepare('INSERT INTO sessions(digest,user_id,expires_at) VALUES(?,?,?)').bind(hash('synthetic-'+id),id,Math.floor(Date.now()/1000)+600).run();
+ let legacy=false;
+ const env={DB:db,MODE:'production',HARNESS_API_TOKEN:token,HARNESS_SERVICE:{fetch:(request:Request)=>legacy?Response.json({schemaVersion:1,installationId:'admin',tenantId:'tenant',siteOrigin:grant.siteOrigin,source:'connected',rows:[],writable:false}):handleAdmin(backend.env,request)},ASSETS:{fetch:async()=>new Response('Synthetic assets')}} as unknown as AdminEnv;
+ const call=(path:string,value?:unknown,user='owner')=>app.fetch(new Request(manifest.adminOrigin+'/api/'+path,{method:value===undefined?'GET':'POST',headers:{cookie:'__Host-vitris-admin=synthetic-'+user,origin:manifest.adminOrigin,...(value===undefined?{}:{'content-type':'application/json'})},...(value===undefined?{}:{body:JSON.stringify(value)})}),env);
+ const boot=await (await call('bootstrap')).json() as any;assert.equal(boot.themeStatus,'website');assert.equal(boot.theme.colorAccent,'#7c2849');assert.ok(!JSON.stringify(boot).includes(token));
+ const page=await (await call('leads?limit=50')).json() as any;assert.equal(page.rows.length,50);assert.equal(page.pagination.total,205);assert.equal(page.pagination.newCount,205);
+ const unicodeId='界'.repeat(200);await backend.env.DB.prepare("INSERT INTO leads(id,tenant_id,name,created_at) VALUES(?,'tenant','Synthetic long ID','2030-01-01 00:00:00')").bind(unicodeId).run();
+ const unicodePage=await (await call('leads?limit=1')).json() as any;assert.ok(unicodePage.pagination.nextCursor.length>1500);assert.equal((await call('leads?cursor='+encodeURIComponent(unicodePage.pagination.nextCursor))).status,200);await backend.env.DB.prepare('DELETE FROM leads WHERE id=?').bind(unicodeId).run();
+ const exact=await (await call('leads?q=Synthetic%200&id=lead-0')).json() as any;assert.equal(exact.rows.length,1);
+ const value={id:'lead-0',assignedTo:'owner',dueDate:'2020-01-01',notes:'Authoritative backend note',completed:false,revision:0};assert.equal((await call('leads/follow-up',value)).status,200);
+ const due=await (await call('leads?queue=due&assignee=owner')).json() as any;assert.equal(due.pagination.total,1);assert.equal(due.rows[0].followUp.notes,value.notes);
+ assert.equal((await db.prepare('SELECT COUNT(*) n FROM leads').first<{n:number}>())?.n,0,'Connected enquiries are not copied into the admin');
+ assert.equal((await call('leads/follow-up',{...value,revision:1},'reader')).status,403);
+ assert.equal((await call('leads/follow-up',value)).status,409);
+ grant.scopes=['leads:read','analytics:read'];backend.env.ADMIN_CONNECTIONS=JSON.stringify({admin:grant});assert.equal((await (await call('leads')).json() as any).writable,false);assert.equal((await call('leads/follow-up',{...value,revision:1})).status,503);
+ legacy=true;assert.equal((await call('leads?q=anything')).status,200);assert.equal((await call('leads?queue=due')).status,503);assert.equal((await call('leads?cursor=anything')).status,503);
+});

@@ -1,10 +1,10 @@
-import {isObject, isLeadRow, isAnalyticsRow, isWebsiteTheme, type WebsiteTheme, type AdminManifest, type LeadsResponse, type AnalyticsResponse, type MutationResponse} from '../../contracts/src/index.ts';
+import {isObject, isLeadRow, isLeadFollowUp, isLeadPagination, isAnalyticsRow, isWebsiteTheme, type LeadFollowUp, type WebsiteTheme, type AdminManifest, type LeadsResponse, type AnalyticsResponse, type MutationResponse} from '../../contracts/src/index.ts';
 interface BackendIdentity {schemaVersion: 1; installationId: string; tenantId: string; siteOrigin: string}
 interface StatusResponse extends BackendIdentity {scopes: string[]; theme?: WebsiteTheme | null}
-interface HarnessResponses {status: StatusResponse; leads: LeadsResponse & BackendIdentity; analytics: AnalyticsResponse & BackendIdentity; 'leads/status': MutationResponse}
-type HarnessOptions = {days?: number; body?: unknown; mode?: 'test' | 'production'};
+interface HarnessResponses {status: StatusResponse; leads: LeadsResponse & BackendIdentity; analytics: AnalyticsResponse & BackendIdentity; 'leads/status': MutationResponse; 'leads/follow-up':MutationResponse & {followUp:LeadFollowUp}}
+type HarnessOptions = {days?: number; body?: unknown; mode?: 'test' | 'production'; leadQuery?:URLSearchParams};
 export interface HarnessEnv {HARNESS_API_TOKEN?:string;HARNESS_SERVICE?:Pick<Fetcher, 'fetch'>}
-export class HarnessError extends Error {constructor(public status:number,message:string){super(message);}}
+export class HarnessError extends Error {status: number; constructor(status:number,message:string){super(message);this.status=status;}}
 export function harnessRequest<R extends keyof HarnessResponses>(manifest: AdminManifest, env: HarnessEnv, resource: R, options?: HarnessOptions): Promise<HarnessResponses[R]>;
 export async function harnessRequest(manifest: AdminManifest, env: HarnessEnv, resource: keyof HarnessResponses, options: HarnessOptions = {}): Promise<HarnessResponses[keyof HarnessResponses]> {
   if(!manifest.backend)throw new HarnessError(503,'Website backend is not connected');
@@ -12,11 +12,17 @@ export async function harnessRequest(manifest: AdminManifest, env: HarnessEnv, r
   const path=`/api/admin/v1/${encodeURIComponent(manifest.backend.tenantId)}/${resource}`;
   const url=new URL(path,manifest.backend.origin);if(options.days)url.searchParams.set('days',String(options.days));
   if(resource==='leads'&&options.mode==='test')url.searchParams.set('mode','test');
+  if(resource==='leads'&&options.mode!=='test'&&options.leadQuery)for(const key of ['limit','q','status','queue','assignee','cursor','id']){const value=options.leadQuery.get(key);if(value!==null)url.searchParams.set(key,value);}
   const request=new Request(url,{method:options.body===undefined?'GET':'POST',redirect:'manual',signal:AbortSignal.timeout(12000),headers:{authorization:`Bearer ${env.HARNESS_API_TOKEN}`,'x-vitris-installation':manifest.installationId,'x-vitris-site-origin':manifest.site.origin,...(options.body===undefined?{}:{'content-type':'application/json'})},...(options.body===undefined?{}:{body:JSON.stringify(options.body)})});
   let response:Response;
   try{response=await (env.HARNESS_SERVICE?env.HARNESS_SERVICE.fetch(request):fetch(request));}catch{throw new HarnessError(502,'The website backend is unavailable. No local demo data has been substituted.');}
   if(!response.ok){
     if(response.status===401||response.status===403)throw new HarnessError(503,'The website connection credential or its permissions were rejected. Ask your administrator to verify the connection.');
+    if(resource==='leads/follow-up'){
+      if(response.status===409)throw new HarnessError(409,'This follow-up changed in another session. Reload before saving; your draft is still here.');
+      if(response.status===404||response.status===503)throw new HarnessError(503,'Verify the lead and upgrade the website backend with its reviewed follow-up migration.');
+      if(response.status===400)throw new HarnessError(400,'The website rejected these follow-up fields');
+    }
     if(response.status===404&&resource==='leads/status')throw new HarnessError(404,'Lead not found');
     throw new HarnessError(502,'The website backend could not complete this request.');
   }
@@ -29,9 +35,13 @@ export async function harnessRequest(manifest: AdminManifest, env: HarnessEnv, r
   let data: unknown;
   try {data = JSON.parse(new TextDecoder().decode(bytes));} catch {throw new HarnessError(502, 'Website returned an invalid response');}
   if (!isObject(data)) throw new HarnessError(502, 'Website returned an invalid response');
-  if (resource === 'leads/status') {
+  if (resource === 'leads/status' || resource === 'leads/follow-up') {
     if (data.ok !== true) throw new HarnessError(502, 'Website did not confirm the status change');
-    return {...data, ok: true};
+    if(resource==='leads/follow-up'){
+      if(!isLeadFollowUp(data.followUp))throw new HarnessError(502,'Website returned an invalid follow-up');
+      return {ok:true,followUp:data.followUp};
+    }
+    return {ok: true};
   }
   if (data.schemaVersion !== 1) throw new HarnessError(502, 'Website backend contract version is unsupported');
   if (data.installationId !== manifest.installationId || data.tenantId !== manifest.backend.tenantId || data.siteOrigin !== manifest.site.origin) throw new HarnessError(502, 'Website backend identity does not match this installation');
@@ -51,5 +61,8 @@ export async function harnessRequest(manifest: AdminManifest, env: HarnessEnv, r
     return {...data, ...identity, source: 'connected', rows: data.rows, previousRows:data.previousRows as AnalyticsResponse['previousRows'], timezone, days};
   }
   if (!data.rows.every(isLeadRow) || (data.writable !== undefined && typeof data.writable !== 'boolean') || (data.message !== undefined && typeof data.message !== 'string') || (data.mode !== undefined && typeof data.mode !== 'string')) throw new HarnessError(502, 'Website lead response is invalid');
-  return {...data, ...identity, source: 'connected', rows: data.rows, writable: data.writable, message: data.message, mode: data.mode};
+  if(data.pagination!==undefined&&!isLeadPagination(data.pagination)||data.followUpsEnabled!==undefined&&typeof data.followUpsEnabled!=='boolean'||data.truncated!==undefined&&typeof data.truncated!=='boolean')throw new HarnessError(502,'Website lead capabilities are invalid');
+  if(options.leadQuery?.has('cursor')&&!data.pagination)throw new HarnessError(503,'The website backend does not support lead pagination yet');
+  if(options.leadQuery&&(options.leadQuery.get('queue')==='due'||options.leadQuery.has('assignee'))&&(!data.pagination||!data.followUpsEnabled))throw new HarnessError(503,'The website backend needs the reviewed follow-up upgrade before using this queue');
+  return {...data, ...identity, source: 'connected', rows: data.rows, writable: data.writable, message: data.message, mode: data.mode, pagination:data.pagination as LeadsResponse['pagination'],followUpsEnabled:data.followUpsEnabled as boolean|undefined,truncated:data.truncated as boolean|undefined};
 }

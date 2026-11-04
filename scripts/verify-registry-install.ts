@@ -14,8 +14,8 @@ const release=resolve('artifacts/releases',version),manifest=JSON.parse(await re
 const packages=[];
 for(const pkg of manifest.packages){
   const verified=await registryPackage(pkg);assert.ok(verified,`${pkg.name} is not publicly readable yet`);
-  const metadata=await (await fetch(`https://registry.npmjs.org/${encodeURIComponent(pkg.name)}`,{headers:{'cache-control':'no-cache'}})).json() as {'dist-tags'?: {alpha?: string}};
-  assert.equal(metadata['dist-tags']?.alpha,version);packages.push(verified);
+  const metadata=await (await fetch(`https://registry.npmjs.org/${encodeURIComponent(pkg.name)}`,{headers:{'cache-control':'no-cache'}})).json() as {'dist-tags'?: Record<string,string>};
+  assert.equal(metadata['dist-tags']?.[manifest.tag],version);packages.push(verified);
 }
 const root=await mkdtemp(join(tmpdir(),'website-admin-registry-')),admin=join(root,'fresh-admin'),cache=join(root,'empty-npm-cache');
 await writeFile(join(root,'user.npmrc'),'registry=https://registry.npmjs.org/\n');await writeFile(join(root,'global.npmrc'),'');
@@ -25,7 +25,7 @@ const npmCLI=process.env.npm_execpath||join(dirname(process.execPath),'node_modu
 const run=(args: string[],cwd=admin,extraEnv: NodeJS.ProcessEnv={})=>execFileSync(process.execPath,args,{cwd,env:{...env,...extraEnv},encoding:'utf8',stdio:['ignore','pipe','pipe'],timeout:180000});
 const npm=(args: string[],cwd=admin)=>run([npmCLI,...args],cwd);
 console.log('Creating an installation from the public registry, with a new cache and no npm credentials.');
-npm(['create','--yes','@tryvitris/website-admin-harness@alpha','--','--dir',admin,'--slug','registry-fixture','--name','Registry Fixture','--domain','admin.registry-fixture.example','--website','https://registry-fixture.example'],root);
+npm(['create','--yes',`@tryvitris/website-admin-harness@${manifest.tag}`,'--','--dir',admin,'--slug','registry-fixture','--name','Registry Fixture','--domain','admin.registry-fixture.example','--website','https://registry-fixture.example'],root);
 assert.equal(JSON.parse(await readFile(join(admin,'package.json'),'utf8')).dependencies['@tryvitris/website-admin-harness'],version);
 npm(['install','--ignore-scripts','--no-audit','--no-fund']);
 npm(['install','--ignore-scripts','--no-audit','--no-fund','--no-save',`@tryvitris/website-admin-contracts@${version}`]);
@@ -70,5 +70,5 @@ try{
 }finally{
   if(child.pid&&child.exitCode===null){if(process.platform==='win32'){try{execFileSync('taskkill',['/PID',String(child.pid),'/T','/F'],{stdio:'ignore'});}catch{child.kill();}}else child.kill();}
 }
-const report={ok:true,version,packages,environment:'fresh-anonymous-public-registry-install',temporaryDirectory:root,freshNpmCache:true,workspacePackageLinks:false,initializer:'npm create @tryvitris/website-admin-harness@alpha',workerBuild:'passed',localMigrations:'passed',harnessSetup:'plan/apply/repeat passed; website forms and backend preserved',verification,cloudWrites:false,customerDataRead:false,verifiedAt:new Date().toISOString()};
+const report={ok:true,version,packages,environment:'fresh-anonymous-public-registry-install',temporaryDirectory:root,freshNpmCache:true,workspacePackageLinks:false,initializer:`npm create @tryvitris/website-admin-harness@${manifest.tag}`,workerBuild:'passed',localMigrations:'passed',harnessSetup:'plan/apply/repeat passed; website forms and backend preserved',verification,cloudWrites:false,customerDataRead:false,verifiedAt:new Date().toISOString()};
 await writeFile(join(release,'registry-install-verification.json'),JSON.stringify(report,null,2)+'\n');console.log(JSON.stringify(report,null,2));

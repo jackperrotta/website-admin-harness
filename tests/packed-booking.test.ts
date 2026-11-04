@@ -1,8 +1,8 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
-import {mkdtemp, mkdir, writeFile, readFile} from 'node:fs/promises';
-import {join, resolve} from 'node:path';
+import {mkdtemp, mkdir, writeFile, readFile,copyFile,symlink} from 'node:fs/promises';
+import {join, resolve,dirname} from 'node:path';
 import {tmpdir} from 'node:os';
 import {chromium} from 'playwright';
 import {createWebsiteBookingFixture} from './website-booking-fixture.ts';
@@ -11,10 +11,19 @@ test('packed website and admin packages accept a booking into an already-open pa
   assert.ok(process.env.npm_execpath,'Run this test through npm run check');
   const root=await mkdtemp(join(tmpdir(),'vitris-packed-booking-')), tool=join(root,'installation');await mkdir(tool);
   const npm=(args:string[],cwd:string)=>execFileSync(process.execPath,[process.env.npm_execpath!,...args],{cwd,encoding:'utf8',windowsHide:true,stdio:['ignore','pipe','pipe']});
+  // Never clean a shared sibling build while other tests or chats import its API.
+  const websiteSource=resolve('../vitris-harness'),websiteSnapshot=join(root,'website-harness-source');await mkdir(websiteSnapshot);
+  const sources=execFileSync('git',['ls-files','--cached','--others','--exclude-standard','-z'],{cwd:websiteSource,encoding:'utf8'}).split('\0').filter(Boolean);
+  for(const file of new Set(sources)){
+    if(file.split(/[\\/]/).includes('..'))throw Error('Unexpected website source path');
+    const destination=join(websiteSnapshot,file);await mkdir(dirname(destination),{recursive:true});await copyFile(join(websiteSource,file),destination);
+  }
+  await symlink(join(websiteSource,'node_modules'),join(websiteSnapshot,'node_modules'),process.platform==='win32'?'junction':'dir');
   const packages:string[]=[];
   for(const path of ['packages/admin','packages/contracts','packages/create-admin','../vitris-harness']) {
-    if(path==='../vitris-harness')npm(['run','build:cli'],resolve(path));
-    const archive=JSON.parse(npm(['pack','--ignore-scripts','--json','--pack-destination',root],resolve(path))) as {filename:string}[];
+    const directory=path==='../vitris-harness'?websiteSnapshot:resolve(path);
+    if(path==='../vitris-harness')npm(['run','build:cli'],directory);
+    const archive=JSON.parse(npm(['pack','--ignore-scripts','--json','--pack-destination',root],directory)) as {filename:string}[];
     packages.push(join(root,archive[0].filename));
   }
   npm(['install','--ignore-scripts','--no-audit','--no-fund',...packages],tool);

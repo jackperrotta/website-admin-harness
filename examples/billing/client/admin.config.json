@@ -1,0 +1,1 @@
+{"schemaVersion":1,"installationId":"billing-client-preview","business":{"name":"Alder & Stone","initials":"AS"},"site":{"id":"billing-client-preview","name":"Alder & Stone","origin":"https://alder.example.test"},"adminOrigin":"http://localhost:4395","modules":["account-billing"]}

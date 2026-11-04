@@ -1,0 +1,16 @@
+import {readFile,mkdir,writeFile} from 'node:fs/promises';
+import {resolve,join} from 'node:path';
+import {createHash} from 'node:crypto';
+import {parseManifest} from '../../contracts/src/index.ts';
+import {configuration,stripeApiVersion} from '../src/billing/stripe.ts';
+import type {StripeBillingConfig} from '../../contracts/src/stripe-billing.ts';
+import type {CliOptions} from './types.ts';
+export async function billingPlan(options:CliOptions,packageRoot:string){
+  if(!options.dir||!options.from)throw Error('billing-plan needs --dir EXISTING_ADMIN --from PRIVATE_BILLING_CONFIG.json');
+  if(options.apply)throw Error('billing-plan makes no installation or cloud changes. Apply the reviewed source, secret, migration and scheduler diff explicitly.');
+  const directory=resolve(options.dir),from=resolve(options.from),raw=await readFile(from,'utf8'),config=configuration(JSON.parse(raw) as StripeBillingConfig),manifestRaw=await readFile(join(directory,'admin.config.json'),'utf8'),manifest=parseManifest(JSON.parse(manifestRaw));
+  const migration=join(packageRoot,'modules/billing/migrations/0010_stripe_billing.sql'),migrationRaw=await readFile(migration,'utf8');
+  const hash=(s:string)=>createHash('sha256').update(s).digest('hex');
+  const plan={version:1,installationId:manifest.installationId,siteId:manifest.site.id,adminOrigin:manifest.adminOrigin,manifestDigest:hash(manifestRaw),configurationPath:from,configurationDigest:hash(raw),mode:config.mode,currency:config.currency,approvedPriceCount:config.prices.length,apiVersion:stripeApiVersion,moduleExport:'@tryvitris/website-admin-harness/billing',moduleId:'billing',migration:{source:migration,digest:hash(migrationRaw),additive:true,remoteApply:false},webhook:`${manifest.adminOrigin}/api/modules/billing/hooks/stripe`,permissions:['billing:read','billing:customers:write','billing:subscriptions:write','billing:invoices:write','billing:collect','billing:connection:manage'],requiredSecrets:['STRIPE_SECRET_KEY','STRIPE_WEBHOOK_SECRET'],liveWritesDefault:'disabled',scheduler:'Preserve scheduled handler; review existing cron capacity before enabling bounded reconciliation.',steps:['Back up the dedicated database before a remote migration.','Copy private installation configuration; never put credentials in the public package or browser.','Scaffold module source and import createStripeBilling in both existing Worker entry points.','Enable billing only in the intended installation manifests.','Apply the optional migration explicitly to the intended local or remote database.','Install matching-mode secrets through Wrangler secret stdin.','Configure the exact snapshot webhook URL and pinned Stripe API version.','Review the business’s portal settings and approved prices.','Preserve and deliberately schedule the returned scheduled handler.','Verify account identity with read-only requests before financial acceptance.','Use sandbox customers and authorized test recipients before a separate live rollout.'],cloudWrites:false};
+  const target=join(directory,'.vitris/billing-plan.json');await mkdir(join(directory,'.vitris'),{recursive:true});await writeFile(target,JSON.stringify(plan,null,2)+'\n');console.log(`Billing installation plan saved to ${target}. No account requests, secret changes, migrations, email or charges were performed.`);
+}

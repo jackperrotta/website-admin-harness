@@ -1,5 +1,5 @@
 import process from 'node:process';
-import type {AdminManifest} from '../../contracts/src/index.ts';
+import {isThemeColor,websiteColorKeys,type AdminManifest,type WebsiteTheme} from '../../contracts/src/index.ts';
 import type {CliOptions, PackageManifest, LaunchConfig, SetupState, SetupPlan} from './types.ts';
 import {readFile,writeFile,mkdir,access} from 'node:fs/promises';
 import {resolve,join,dirname,relative,isAbsolute,sep} from 'node:path';
@@ -17,6 +17,13 @@ export async function setup(options: CliOptions,{packageRoot,initialize}: {packa
   const site=resolve(options.site),directory=resolve(options.dir),nested=relative(site,directory);
   if(!nested||(!(nested==='..'||nested.startsWith('..'+sep))&&!isAbsolute(nested)))throw Error('Admin installation must be outside the website directory');
   const launchFile=join(site,'launch.json'),original=await readFile(launchFile,'utf8'),launch=JSON.parse(original) as LaunchConfig;
+  const themeFile=join(site,'theme/defaults.json'),themeBytes=await exists(themeFile)?await readFile(themeFile,'utf8'):'';
+  const themeDigest=hash(themeBytes);let theme:WebsiteTheme|undefined;
+  if(themeBytes){
+    const value=JSON.parse(themeBytes);if(!value||typeof value!=='object'||Array.isArray(value))throw Error('Website theme must be an object');
+    const colors:WebsiteTheme={};for(const key of websiteColorKeys)if(value[key]!==undefined){if(!isThemeColor(value[key]))throw Error(`Invalid website theme color: ${key}`);colors[key]=value[key];}
+    if(Object.keys(colors).length)theme=colors;
+  }
   const id=launch.slug;if(typeof id!=='string'||!/^[a-z][a-z0-9-]{0,50}$/.test(id))throw Error('Website launch.json needs a stable lowercase slug');
   const website=origin(options.website||launch.publicOrigin,'Website origin');
   const backend=origin(options['backend-origin']||launch.backendOrigin||launch.kernelOrigin,'Backend origin');
@@ -27,12 +34,15 @@ export async function setup(options: CliOptions,{packageRoot,initialize}: {packa
   const scopes=['leads:read','analytics:read',...(options['lead-write']?['leads:write']:[])];
   const version=(await read<PackageManifest>(join(packageRoot,'package.json'))).version;
   const cliDigest=hash((await Promise.all(['admin.mjs','setup.mjs'].map(file=>readFile(join(packageRoot,'bin',file))))).map(bytes=>hash(bytes)).join('|'));
-  const plan: SetupPlan={schemaVersion:1,site,directory,package:'@tryvitris/website-admin-harness',version,cliDigest,launchDigest:hash(original),connection,backendOrigin:backend,name:launch.name||id,scopes,cloudWrites:false};
+  const ownerEmail=options['owner-email']?.toLowerCase();
+  if(ownerEmail&&(ownerEmail.length>254||!/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(ownerEmail)))throw Error('Provide a valid --owner-email');
+  const plan: SetupPlan={schemaVersion:1,site,directory,package:'@tryvitris/website-admin-harness',version,...(ownerEmail?{ownerEmail}:{}),themeDigest,...(theme?{theme}:{}),cliDigest,launchDigest:hash(original),connection,backendOrigin:backend,name:launch.name||id,scopes,cloudWrites:false};
   const planFile=join(site,'artifacts/admin/setup-plan.json'),stateFile=join(site,'artifacts/admin/setup-state.json');
   const complete=await exists(stateFile)?await read<SetupState>(stateFile):null;
   if(complete?.stage==='configured'){
     const prior=await read<SetupPlan>(planFile),manifest=await read<AdminManifest>(join(directory,'admin.config.json'));
-    if(complete.planDigest!==hash(JSON.stringify(prior))||complete.directory!==directory||complete.configuredLaunchDigest!==hash(original)||prior.cliDigest!==cliDigest||prior.version!==version||prior.backendOrigin!==backend||JSON.stringify(prior.scopes)!==JSON.stringify(scopes)||manifest.installationId!==id||manifest.adminOrigin!==connection.url||manifest.site?.origin!==website||manifest.backend?.tenantId!==tenant||manifest.backend?.origin!==backend)throw Error('Installation or website changed; plan an explicit migration');
+    if(prior.themeDigest!==themeDigest||JSON.stringify(manifest.theme??null)!==JSON.stringify(prior.theme??null))throw Error('Website colors or installation theme changed; plan an explicit migration');
+    if(complete.planDigest!==hash(JSON.stringify(prior))||complete.directory!==directory||complete.configuredLaunchDigest!==hash(original)||prior.cliDigest!==cliDigest||prior.version!==version||prior.ownerEmail!==ownerEmail||prior.backendOrigin!==backend||JSON.stringify(prior.scopes)!==JSON.stringify(scopes)||manifest.installationId!==id||manifest.adminOrigin!==connection.url||manifest.site?.origin!==website||manifest.backend?.tenantId!==tenant||manifest.backend?.origin!==backend)throw Error('Installation or website changed; plan an explicit migration');
     console.log('Admin installation already configured. No changes.');return;
   }
   if(!options.apply){await save(planFile,plan);console.log(`Setup plan saved to ${planFile}. Review it, then repeat with --apply. No cloud resources changed.`);return;}
@@ -46,12 +56,17 @@ export async function setup(options: CliOptions,{packageRoot,initialize}: {packa
     if(manifest.installationId!==id||manifest.adminOrigin!==connection.url||manifest.site?.origin!==website||manifest.backend?.tenantId!==tenant||manifest.backend?.origin!==backend)throw Error('Existing installation differs from the reviewed plan');
   }else{
     await save(stateFile,{stage:'creating',directory,planDigest:hash(JSON.stringify(plan))});
-    await initialize(['--dir',directory,'--slug',id,'--name',plan.name,'--domain',options.domain,'--website',website,'--backend-origin',backend,'--tenant',tenant]);
+    await initialize(['--dir',directory,'--slug',id,'--name',plan.name,'--domain',options.domain,'--website',website,'--backend-origin',backend,'--tenant',tenant,...(ownerEmail?['--owner-email',ownerEmail]:[])]);
   }
   const grantFile=join(directory,'.vitris/backend-grant.json');
   if(await exists(grantFile)&&JSON.stringify(await read(grantFile))!==JSON.stringify(grant))throw Error('Existing grant differs; rotate credentials explicitly');
   // Recheck after scaffolding so concurrent website edits are never overwritten.
-  if(await readFile(launchFile,'utf8')!==original)throw Error('Website changed while scaffolding; prepare a new plan');
+  if(await readFile(launchFile,'utf8')!==original||(await exists(themeFile)?await readFile(themeFile,'utf8'):'')!==themeBytes)throw Error('Website changed while scaffolding; prepare a new plan');
+  if(theme)for(const name of ['admin.config.json','admin.local.json']){
+    const file=join(directory,name);if(!await exists(file))continue;const manifest=await read<AdminManifest>(file);
+    if(manifest.theme&&JSON.stringify(manifest.theme)!==JSON.stringify(theme))throw Error('Installation colors conflict with the reviewed website palette');
+    if(!manifest.theme)await save(file,{...manifest,theme});
+  }
   await save(grantFile,grant);
   await writeFile(join(directory,'BACKEND-SETUP.md'),'# Connect this installation\n\nThe backend must expose the Vitris admin v1 API. Merge the ignored .vitris/backend-grant.json into its complete ADMIN_CONNECTIONS secret map; preserve all other grants. Upload the matching VITRIS_ADMIN_API_TOKEN to this admin as HARNESS_API_TOKEN using secret stdin. No raw credential was saved.\n\nInstall dependencies; provision this installation\'s dedicated Cloudflare resources; review migrations, owner bootstrap, authentication, and DNS before deployment. This setup has not deployed resources, enabled website collection, or sent mail. Read agent/WORKFLOW.md and agent/refs/harness.md.\n');
   const backup=join(site,'artifacts/admin/launch-backups',`${hash(original)}.json`);

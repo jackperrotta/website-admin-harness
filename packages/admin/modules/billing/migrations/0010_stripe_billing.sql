@@ -1,0 +1,12 @@
+-- Optional Stripe module only. Apply deliberately to the owning installation.
+CREATE TABLE billing_connections(scope TEXT PRIMARY KEY,verified_at INTEGER NOT NULL);
+CREATE TABLE billing_customers(scope TEXT NOT NULL,id TEXT NOT NULL,stripe_id TEXT NOT NULL,name TEXT NOT NULL,email TEXT NOT NULL,created_at INTEGER NOT NULL,next_sync_at INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(scope,id),UNIQUE(scope,stripe_id));
+CREATE TABLE billing_records(scope TEXT NOT NULL,id TEXT NOT NULL,customer_id TEXT NOT NULL,kind TEXT NOT NULL,status TEXT NOT NULL,payload TEXT NOT NULL,updated_at INTEGER NOT NULL,PRIMARY KEY(scope,id),FOREIGN KEY(scope,customer_id) REFERENCES billing_customers(scope,id));
+CREATE INDEX billing_records_customer ON billing_records(scope,customer_id,kind);
+CREATE TABLE billing_invoice_drafts(scope TEXT NOT NULL,id TEXT NOT NULL,customer_id TEXT NOT NULL,payload TEXT NOT NULL,revision INTEGER NOT NULL DEFAULT 0,state TEXT NOT NULL DEFAULT 'draft',stripe_id TEXT,issue_operation TEXT,PRIMARY KEY(scope,id),FOREIGN KEY(scope,customer_id) REFERENCES billing_customers(scope,id));
+CREATE TABLE billing_operations(scope TEXT NOT NULL,id TEXT NOT NULL,kind TEXT NOT NULL,fingerprint TEXT NOT NULL,customer_id TEXT,resource_id TEXT,state TEXT NOT NULL DEFAULT 'pending',steps TEXT NOT NULL DEFAULT '{}',result TEXT,created_at INTEGER NOT NULL,lease_id TEXT,lease_until INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(scope,id));
+CREATE TABLE billing_offer_claims(scope TEXT NOT NULL,customer_id TEXT NOT NULL,price_id TEXT NOT NULL,operation_id TEXT NOT NULL,session_id TEXT,PRIMARY KEY(scope,customer_id,price_id));
+CREATE TABLE billing_inbox(scope TEXT NOT NULL,id TEXT NOT NULL,kind TEXT NOT NULL,object_id TEXT NOT NULL,customer_id TEXT NOT NULL,state TEXT NOT NULL DEFAULT 'pending',attempts INTEGER NOT NULL DEFAULT 0,next_attempt INTEGER NOT NULL DEFAULT 0,lease_id TEXT,lease_until INTEGER NOT NULL DEFAULT 0,error_code TEXT,PRIMARY KEY(scope,id));
+CREATE INDEX billing_inbox_due ON billing_inbox(scope,state,next_attempt);
+CREATE TABLE billing_sync(scope TEXT NOT NULL,customer_id TEXT NOT NULL,kind TEXT NOT NULL,cursor TEXT NOT NULL DEFAULT '',state TEXT NOT NULL DEFAULT 'pending',updated_at INTEGER NOT NULL,PRIMARY KEY(scope,customer_id,kind),FOREIGN KEY(scope,customer_id) REFERENCES billing_customers(scope,id));
+CREATE TABLE billing_limits(scope TEXT NOT NULL,key TEXT NOT NULL,bucket INTEGER NOT NULL,attempts INTEGER NOT NULL,PRIMARY KEY(scope,key,bucket));

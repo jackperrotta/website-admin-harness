@@ -8,15 +8,20 @@
   "scripts": {
     "build": "node --experimental-strip-types scripts/build.ts",
     "typecheck": "tsc --noEmit",
-    "test": "npm run build && node --experimental-strip-types --test tests/*.test.ts",
+    "test": "npm run build && node --experimental-strip-types --test --test-concurrency=2 tests/*.test.ts",
     "dev": "npm run build && npm run db:local && wrangler dev --config wrangler.local.jsonc --port 4391",
     "db:local": "wrangler d1 migrations apply vitris-admin-local --local --config wrangler.local.jsonc",
-    "check": "npm run build && npm run typecheck && node --experimental-strip-types --test tests/*.test.ts",
+    "check": "npm run check:privacy && npm run build && npm run typecheck && node --experimental-strip-types --test --test-concurrency=2 tests/*.test.ts",
+    "check:privacy": "node --experimental-strip-types scripts/check-privacy.ts",
     "release:pack": "npm run check && node --experimental-strip-types scripts/pack-release.ts",
     "release:publish": "node --experimental-strip-types scripts/publish-release.ts",
     "release:verify": "node --experimental-strip-types scripts/verify-registry-install.ts",
     "scheduling:preview": "npm run build && node --experimental-strip-types scripts/scheduling-preview.ts",
-    "booking:preview": "npm run build && node --experimental-strip-types scripts/booking-preview.ts"
+    "booking:preview": "npm run build && node --experimental-strip-types scripts/booking-preview.ts",
+    "vitris:preview": "npm run build && node --experimental-strip-types scripts/vitris-preview.ts",
+    "vitris:signin": "node --experimental-strip-types scripts/vitris-signin.ts",
+    "billing:preview": "npm run build && node --experimental-strip-types scripts/billing-preview.ts",
+    "stripe:verify": "node --experimental-strip-types scripts/stripe-verify.ts"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260922.1",

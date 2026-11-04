@@ -23,6 +23,8 @@ test('website color application changes the whole palette and resets missing ins
  applyWebsiteTheme(root,{colorAccent:'#442266'});assert.equal(properties.get('--accent-ink'),'#ffffff');assert.notEqual(properties.get('--canvas'),'#fff9e0');
  applyWebsiteTheme(root,null);assert.notEqual(properties.get('--accent'),'#442266');
  applyWebsiteTheme(root,{colorBg:'#10141a',colorText:'#ffffff',colorAccent:'#aaccff'});assert.equal(root.style.colorScheme,'dark');assert.equal(properties.get('--focus'),'#aaccff');
+ applyWebsiteTheme(root,{colorAccent:'rgb(255 220 20)',colorBg:'hsl(200 20% 10%)'});assert.equal(properties.get('--accent-ink'),'#111111');assert.equal(root.style.colorScheme,'dark');
+ applyWebsiteTheme(root,{colorAccent:'hsl(45 100% 85%)'});assert.equal(properties.get('--accent-ink'),'#111111');
 });
 
 test('analytics UI handles empty, zero, legacy and detailed data without fictitious metrics',async()=>{

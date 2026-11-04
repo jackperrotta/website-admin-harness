@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 import process from 'node:process';
+import {ownerSetup} from './owner-setup.ts';
+import {billingPlan} from './billing-plan.ts';
 import {coreSections, type AdminManifest} from '../../contracts/src/index.ts';
 import type {PackageManifest, LaunchConfig, WranglerConfig} from './types.ts';
 import {parseArgs} from 'node:util';
@@ -15,13 +17,15 @@ const exists=async(path: string)=>access(path).then(()=>true,()=>false);
 function slug(value: string){if(!/^[a-z][a-z0-9-]{0,50}$/.test(value))throw new Error('Use a slug with lowercase letters, digits and hyphens (maximum 51 characters)');return value;}
 function email(value: unknown){if(typeof value!=='string'||value.length>254||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value))throw new Error('A valid email is required');return value.toLowerCase();}
 export async function run(args: string[]=process.argv.slice(2)): Promise<void> {
-  const {positionals,values:v}=parseArgs({args,allowPositionals:true,options:{dir:{type:'string'},name:{type:'string'},slug:{type:'string'},domain:{type:'string'},website:{type:'string'},email:{type:'string'},site:{type:'string'},plan:{type:'boolean'},apply:{type:'boolean'},local:{type:'boolean'},route:{type:'string'},from:{type:'string'},'backend-origin':{type:'string'},tenant:{type:'string'},'lead-write':{type:'boolean'}}});
+  const {positionals,values:v}=parseArgs({args,allowPositionals:true,options:{dir:{type:'string'},name:{type:'string'},slug:{type:'string'},domain:{type:'string'},website:{type:'string'},email:{type:'string'},'owner-email':{type:'string'},site:{type:'string'},plan:{type:'boolean'},apply:{type:'boolean'},local:{type:'boolean'},route:{type:'string'},from:{type:'string'},'backend-origin':{type:'string'},tenant:{type:'string'},'lead-write':{type:'boolean'}}});
   const command=positionals[0];const root=resolve(v.dir||'.');
+  if(command==='billing-plan')return billingPlan(v,packageRoot);
   if(command==='scheduling-connect'){const {schedulingConnect}=await import('./scheduling-connect.ts');return schedulingConnect(v,packageRoot);}
   if(command==='setup'){const {setup}=await import('./setup.ts');return setup(v,{packageRoot,initialize:args=>run(['init',...args])});}
   if(command==='init'){
     if(!v.dir)throw new Error('init requires --dir for a new installation directory');
     if(await exists(root))throw new Error('Destination exists; choose a new directory to preserve existing work');
+    if(v['owner-email'])email(v['owner-email']);
     const id=slug(v.slug||'my-business');const name=(v.name||'My Business').trim();if(!name||name.length>100)throw new Error('Business name must contain 1–100 characters');
     const domain=v.domain||`admin.${id}.example`;
     if(!/^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,63}$/.test(domain))throw new Error('Provide a bare admin hostname, without a URL or path');
@@ -39,20 +43,22 @@ export async function run(args: string[]=process.argv.slice(2)): Promise<void> {
     await save(join(root,'admin.config.json'),config);
     const {backend:productionBackend,...localConfig}=config;
     await save(join(root,'admin.local.json'),{...localConfig,installationId:`${id}-local`,adminOrigin:'http://127.0.0.1:4391'});
-    const settings: WranglerConfig={name:`${id}-admin`,main:'worker.ts',compatibility_date:'2026-09-01',workers_dev:false,assets:{directory:'./public',binding:'ASSETS',not_found_handling:'single-page-application',run_worker_first:true},d1_databases:[{binding:'DB',database_name:`${id}-admin`,database_id:'REPLACE_WITH_D1_ID',migrations_dir:'./migrations'}],r2_buckets:[{binding:'ASSET_STORE',bucket_name:`${id}-admin-assets`}],vars:{MODE:'production'},routes:[{pattern:domain,custom_domain:true}]};
-    if(v.from){settings.vars.AUTH_FROM=email(v.from);settings.send_email=[{name:'AUTH_EMAIL',allowed_sender_addresses:[settings.vars.AUTH_FROM]}];}
+    const settings: WranglerConfig={name:`${id}-admin`,main:'worker.ts',compatibility_date:'2026-09-01',workers_dev:false,assets:{directory:'./public',binding:'ASSETS',not_found_handling:'single-page-application',run_worker_first:true},d1_databases:[{binding:'DB',database_name:`${id}-admin`,database_id:'REPLACE_WITH_D1_ID',migrations_dir:'./migrations'}],r2_buckets:[{binding:'ASSET_STORE',bucket_name:`${id}-admin-assets`}],vars:{MODE:'production',PASSWORD_LOGIN:'1',AUTH_ACCOUNTS_ENABLED:'1',AUTH_EMAIL_READY:'0',AUTH_FROM:email(v.from||'accounts@tryvitris.com')},triggers:{crons:['* * * * *']},routes:[{pattern:domain,custom_domain:true}]};
+    settings.send_email=[{name:'AUTH_EMAIL',allowed_sender_addresses:[settings.vars.AUTH_FROM!]}];
     await save(join(root,'wrangler.jsonc'),settings);
-    await save(join(root,'wrangler.local.jsonc'),{...settings,name:`${id}-admin-local`,main:'worker.local.ts',workers_dev:false,routes:[],vars:{MODE:'local'},send_email:[],d1_databases:[{binding:'DB',database_name:'admin-local',database_id:'00000000-0000-0000-0000-000000000001',migrations_dir:'./migrations'}],r2_buckets:[{binding:'ASSET_STORE',bucket_name:`${id}-admin-local-assets`}]});
+    await save(join(root,'wrangler.local.jsonc'),{...settings,name:`${id}-admin-local`,main:'worker.local.ts',workers_dev:false,routes:[],triggers:{crons:[]},vars:{MODE:'local'},send_email:[],d1_databases:[{binding:'DB',database_name:'admin-local',database_id:'00000000-0000-0000-0000-000000000001',migrations_dir:'./migrations'}],r2_buckets:[{binding:'ASSET_STORE',bucket_name:`${id}-admin-local-assets`}]});
     await writeFile(join(root,'worker.ts'),"import {createAdmin} from '@tryvitris/website-admin-harness/worker';\nimport config from './admin.config.json';\nexport default createAdmin(config);\n");
     await writeFile(join(root,'worker.local.ts'),"import {createAdmin} from '@tryvitris/website-admin-harness/worker';\nimport config from './admin.local.json';\nexport default createAdmin(config);\n");
     await cp(join(packageRoot,'dist/client'),join(root,'public'),{recursive:true});
     await cp(join(packageRoot,'migrations'),join(root,'migrations'),{recursive:true});
     await cp(join(packageRoot,'agent'),join(root,'agent'),{recursive:true});
     await writeFile(join(root,'AGENTS.md'),"# Business admin installation\n\nRead agent/WORKFLOW.md before changing modules, permissions, schema or website connections.\n\nUse Cloudflare Workers, D1, R2 and Email Service by default. Never add Pages or Media editor sections. Preserve business-owned accounts and exact domain bindings.\n");
-    await writeFile(join(root,'.gitignore'),'node_modules/\ndist/\n.wrangler/\n.dev.vars*\n.env*\n.vitris/\n');
-    await writeFile(join(root,'README.md'),`# ${name} admin\n\nInstall dependencies and run npm run check to typecheck and build this TypeScript installation. Then run npm run db:local and npm run dev for synthetic local data.\n\nRun npm run plan for the Cloudflare setup checklist. Production deployment needs real D1 and R2 bindings, an active admin hostname in the deployment account, Cloudflare Email Service sender onboarding and the AUTH_EMAIL binding. Configure AUTH_FROM. Bootstrap the initial owner with vitris-admin owner --email owner@yourbusiness.com, then apply its private SQL file using Wrangler against the intended database.\n\nSee agent/WORKFLOW.md for safe agent extension steps. Existing website forms and analytics are not connected automatically.\n`);
+    await writeFile(join(root,'.gitignore'),'node_modules/\ndist/\n.wrangler/\n.dev.vars*\n.env*\n*.env\n.vitris/\n');
+    await writeFile(join(root,'README.md'),`# ${name} admin\n\nInstall dependencies and run npm run check to typecheck and build this TypeScript installation. Then run npm run db:local and npm run dev for synthetic local data.\n\nRun npm run plan for the Cloudflare setup checklist. Production deployment needs real D1 and R2 bindings, an active admin hostname in the deployment account, Cloudflare Email Service sender onboarding and the AUTH_EMAIL binding. The shared sender defaults to accounts@tryvitris.com. Complete sender onboarding, install PASSWORD_PEPPER (preserve any existing value) and a random 32-byte hex AUTH_EMAIL_ENCRYPTION_KEY as Worker secrets, then set AUTH_EMAIL_READY=1. Use vitris-admin owner-setup --email owner@yourbusiness.com and review/apply its private SQL against this dedicated database after migration 0009. The designated owner opens /account/setup, receives an email, and chooses their own password. Existing owners sign in normally and verify their email in Account security. See agent/refs/accounts.md.\n\nSee agent/WORKFLOW.md for safe agent extension steps. Existing website forms and analytics are not connected automatically.\n`);
+    if(v['owner-email'])await ownerSetup(root,v['owner-email']);
     console.log(`Created ${root}. Next: install dependencies, run npm run db:local, then npm run dev. No cloud resources were changed.`);return;
   }
+  if(command==='owner-setup')return ownerSetup(root,v.email);
   if(command==='owner'){
     const address=email(v.email);await read(join(root,'admin.config.json'));
     const sql=`INSERT INTO users(id,email,role) VALUES('${randomUUID()}','${address.replaceAll("'","''")}','owner') ON CONFLICT(email) DO NOTHING;\n`;
@@ -86,11 +92,12 @@ export async function run(args: string[]=process.argv.slice(2)): Promise<void> {
     if(!config.d1_databases?.[0]?.database_id||config.d1_databases[0].database_id.includes('REPLACE'))issues.push('Create a dedicated D1 database and replace database_id');
     if(!config.r2_buckets?.length)issues.push('Configure an R2 ASSET_STORE binding');
     if(!config.send_email?.some(x=>x.name==='AUTH_EMAIL')||!config.vars?.AUTH_FROM)issues.push('Onboard a Cloudflare Email Service sender; configure AUTH_FROM and AUTH_EMAIL');
+    if(config.vars?.AUTH_ACCOUNTS_ENABLED==='1'&&config.vars.AUTH_EMAIL_READY!=='1')issues.push('Finish sender verification and secret setup before setting AUTH_EMAIL_READY=1');
     if(config.vars?.MODE==='local')issues.push('Production configuration must not use local mode');
     if(!config.routes?.some(x=>x.custom_domain&&`https://${x.pattern}`===manifest.adminOrigin))issues.push('Attach the exact canonical admin Custom Domain');
-    console.log(JSON.stringify({installation:manifest.installationId,adminOrigin:manifest.adminOrigin,provider:'cloudflare',configurationIssues:issues,manualChecks:['Verify account and hostname ownership','Create or verify the dedicated R2 bucket','Back up existing D1 before applying migrations','Apply migrations and bootstrap the initial owner','Verify sender-domain onboarding and restricted email binding','Deploy only after reviewing configuration; test login on the canonical HTTPS domain'],cloudWrites:false},null,2));
+    console.log(JSON.stringify({installation:manifest.installationId,adminOrigin:manifest.adminOrigin,provider:'cloudflare',configurationIssues:issues,manualChecks:['Verify account and hostname ownership','Create or verify the dedicated R2 bucket','Back up existing D1 before applying migrations','Apply additive migrations to the dedicated database; designate first owner only if no users exist','Verify sender-domain onboarding and restricted email binding','Preserve PASSWORD_PEPPER; configure AUTH_EMAIL_ENCRYPTION_KEY; verify the mail cron','Existing owners verify email in Account security before inviting team members','Deploy only after reviewing configuration; test login on the canonical HTTPS domain'],cloudWrites:false},null,2));
     if(command==='doctor'&&issues.length)process.exitCode=1;return;
   }
-  console.log('vitris-admin scheduling-connect --site WEBSITE --dir EXISTING_ADMIN --local --plan|--apply [--route /book]\nvitris-admin setup --site WEBSITE --dir NEW_ADMIN_DIRECTORY --domain admin.business.com --website HTTPS_ORIGIN --tenant TENANT_ID --backend-origin HTTPS_BACKEND --plan|--apply\nvitris-admin init --dir NEW_DIRECTORY --slug acme --name "Acme" --domain admin.acme.com --website https://acme.com\nvitris-admin plan|doctor [--dir INSTALLATION]\nvitris-admin owner --email owner@business.com [--dir INSTALLATION]\nvitris-admin module --slug example --name "Example" [--dir INSTALLATION]\nvitris-admin connect --site WEBSITE_DIRECTORY --plan|--apply [--dir INSTALLATION]');
+  console.log('vitris-admin billing-plan --dir EXISTING_ADMIN --from PRIVATE_BILLING_CONFIG.json\nvitris-admin scheduling-connect --site WEBSITE --dir EXISTING_ADMIN --local --plan|--apply [--route /book]\nvitris-admin setup --site WEBSITE --dir NEW_ADMIN_DIRECTORY --domain admin.business.com --website HTTPS_ORIGIN --tenant TENANT_ID --backend-origin HTTPS_BACKEND --plan|--apply\nvitris-admin init --dir NEW_DIRECTORY --slug acme --name "Acme" --domain admin.acme.com --website https://acme.com\nvitris-admin plan|doctor [--dir INSTALLATION]\nvitris-admin owner-setup --email owner@business.com [--dir INSTALLATION]\nvitris-admin module --slug example --name "Example" [--dir INSTALLATION]\nvitris-admin connect --site WEBSITE_DIRECTORY --plan|--apply [--dir INSTALLATION]');
 }
 if(process.argv[1]&&import.meta.url===pathToFileURL(resolve(process.argv[1])).href){try{await run();}catch(error){console.error(error instanceof Error ? error.message : String(error));process.exitCode=1;}}

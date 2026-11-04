@@ -1,0 +1,1 @@
+{"schemaVersion":1,"installationId":"billing-seller-preview","business":{"name":"Vitris Studio","initials":"V"},"site":{"id":"billing-seller-preview","name":"Studio workspace","origin":"https://studio.example.test"},"adminOrigin":"http://127.0.0.1:4394","modules":["billing"]}

@@ -14,3 +14,13 @@ export async function verifyPassword(env:PasswordEnv,userId:string,password:unkn
   const verified=await crypto.subtle.verify('HMAC',pepper,bytes(row.tag),derived);
   return passwordReady(env) && supported && validInput && verified;
 }
+export function validNewPassword(password:unknown):password is string{return typeof password==='string'&&password.length<=256&&Array.from(password.normalize('NFC')).length>=15;}
+export async function createPassword(env:PasswordEnv,password:unknown):Promise<Credential>{
+ if(!passwordReady(env)||!validNewPassword(password))throw new Error('Use a password of at least 15 characters (maximum 256).');
+ const salt=Array.from(crypto.getRandomValues(new Uint8Array(32)),b=>b.toString(16).padStart(2,'0')).join('');
+ const key=await crypto.subtle.importKey('raw',new TextEncoder().encode(password.normalize('NFC')),{name:'PBKDF2'},false,['deriveBits']);
+ const derived=await crypto.subtle.deriveBits({name:'PBKDF2',hash:'SHA-256',iterations:100000,salt:bytes(salt)},key,1536);
+ const pepper=await crypto.subtle.importKey('raw',new TextEncoder().encode(env.PASSWORD_PEPPER!),{name:'HMAC',hash:'SHA-256'},false,['sign']);
+ const signature=await crypto.subtle.sign('HMAC',pepper,derived);
+ return {salt,tag:Array.from(new Uint8Array(signature),b=>b.toString(16).padStart(2,'0')).join(''),iterations:100000,key_bits:1536};
+}

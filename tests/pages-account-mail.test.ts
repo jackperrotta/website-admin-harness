@@ -1,0 +1,25 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {Miniflare,convertV4MiniflareOptions} from 'miniflare';
+import {build} from 'esbuild';
+import {readFile} from 'node:fs/promises';
+import {resolve} from 'node:path';
+import {createHmac,pbkdf2Sync} from 'node:crypto';
+
+test('Pages sends through a private installation mail binding; cron drains without copying the password pepper',{timeout:180000},async()=>{
+ const origin='https://admin.synthetic.test',pepper='synthetic-pages-account-pepper-32-characters',manifest={schemaVersion:1,installationId:'pages-mail',business:{name:'Synthetic Pages',initials:'SP'},site:{id:'pages-mail',name:'Website',origin:'https://synthetic.test'},adminOrigin:origin,modules:[]};
+ const bundle=async(contents:string)=>(await build({stdin:{contents,resolveDir:process.cwd()},bundle:true,write:false,format:'esm',platform:'neutral'})).outputFiles[0].text;
+ const site=await bundle(`import {createPagesAdmin} from ${JSON.stringify(resolve('packages/admin/dist/pages.js'))};export default createPagesAdmin(${JSON.stringify(manifest)});`);
+ const mail=await bundle(`import {createAccountMailWorker} from ${JSON.stringify(resolve('packages/admin/dist/account-mail.js'))};const app=createAccountMailWorker(${JSON.stringify(manifest)});export default {async fetch(request,env){env.AUTH_EMAIL={send:async message=>{if(await env.DB.prepare('SELECT 1 FROM capture_config WHERE fail=1').first())throw Error('private provider detail');await env.DB.prepare('INSERT INTO capture(message) VALUES(?)').bind(JSON.stringify(message)).run();}};if(new URL(request.url).pathname==='/__test/tick'){await app.scheduled({},env);return new Response('ok');}return app.fetch(request,env);}};`);
+ const bindings={AUTH_ACCOUNTS_ENABLED:'1',AUTH_EMAIL_READY:'1',AUTH_FROM:'accounts@tryvitris.com',AUTH_EMAIL_ENCRYPTION_KEY:'ab'.repeat(32)};
+ const app=new Miniflare(convertV4MiniflareOptions({workers:[{name:'site',modules:true,script:site,compatibilityDate:'2026-09-01',d1Databases:{DB:'pages-mail'},bindings:{...bindings,MODE:'production',PASSWORD_LOGIN:'1',PASSWORD_PEPPER:pepper},serviceBindings:{AUTH_MAIL_SERVICE:'mail',ASSETS:async()=>new Response('app')}},{name:'mail',modules:true,script:mail,compatibilityDate:'2026-09-01',d1Databases:{DB:'pages-mail'},bindings}]}));
+ try{const db=await app.getD1Database('DB','site');for(const name of ['0001_core.sql','0002_work_queue.sql','0003_password_credentials.sql'])for(const sql of (await readFile('packages/admin/migrations/'+name,'utf8')).replace(/^--.*$/gm,'').split(';').filter(s=>s.trim()))await db.prepare(sql).run();for(const sql of (await readFile('packages/admin/migrations/0009_account_lifecycle.sql','utf8')).split('-- statement-breakpoint').filter(s=>/CREATE /i.test(s)))await db.prepare(sql).run();await db.prepare('CREATE TABLE capture(message TEXT)').run();await db.prepare('CREATE TABLE capture_config(fail INTEGER)').run();
+ await db.prepare("INSERT INTO users VALUES('owner','owner@example.test','owner',1)").run();const password='A synthetic Pages passphrase',salt='cd'.repeat(32),tag=createHmac('sha256',pepper).update(pbkdf2Sync(password,Buffer.from(salt,'hex'),100000,192,'sha256')).digest('hex');await db.prepare('INSERT INTO password_credentials(user_id,salt,tag,iterations,key_bits) VALUES(?,?,?,?,?)').bind('owner',salt,tag,100000,1536).run();
+ const post=(path:string,data:unknown)=>app.dispatchFetch(origin+path,{method:'POST',headers:{origin,'content-type':'application/json'},body:JSON.stringify(data)});
+ assert.equal((await post('/api/auth/password',{email:'owner@example.test',password})).status,200);assert.equal((await post('/api/auth/password/reset/request',{email:'owner@example.test'})).status,200);
+ const mailWorker=await app.getWorker('mail');await mailWorker.fetch('https://vitris-account-mail.internal/__test/tick');const captured=await db.prepare('SELECT message FROM capture').first<{message:string}>();assert.ok(captured);assert.match(JSON.parse(captured.message).text,/https:\/\/admin\.synthetic\.test\/account\/reset#token=/);
+ // Exercise the same private transport that waitUntil uses, with no public hostname accepted.
+ const valid={to:'owner@example.test',from:'accounts@tryvitris.com',subject:'Synthetic Pages account message',text:origin};const send=(value:unknown,base='https://vitris-account-mail.internal')=>mailWorker.fetch(base+'/send',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(value)});
+ assert.equal((await send(valid,'https://mail.example.test')).status,404);assert.equal((await send({...valid,from:'intruder@example.test'})).status,400);assert.equal((await send({...valid,text:'https://other.example.test'})).status,400);assert.equal((await send({...valid,html:'unexpected'})).status,400);assert.equal((await send(valid)).status,200);await db.prepare('INSERT INTO capture_config VALUES(1)').run();const failed=await send(valid);assert.equal(failed.status,502);assert.ok(!(await failed.text()).includes('private provider detail'));
+ }finally{await app.dispose();}
+});

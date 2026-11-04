@@ -14,3 +14,5 @@ The admin is a Cloudflare application with an explicit installation manifest and
 Use `refs/modules.md` for module rules and `refs/cloudflare.md` for deployment. Updating this kit requires an explicit diff; do not overwrite installation-specific instructions automatically.
 
 Read `refs/harness.md` before changing backend connections or data adapters. A connection grants access to existing data; it does not enable website collection or send notifications automatically.
+
+Read `refs/leads.md` for lead follow-up, full-history search, installation scoping, compatible backend migrations and read-only connections.

@@ -1,0 +1,33 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
+import {createSchedulingBrowserFixture} from './scheduling-browser-fixture.ts';
+
+test('lead follow-up preserves legacy rows, permissions, assignment, dates and optimistic revisions',async t=>{
+ const fixture=await createSchedulingBrowserFixture({modules:[]});t.after(()=>fixture.app.dispose());const {db,origin,sessions}=fixture;
+ const call=(path:string,value?:unknown,user='owner',csrf=true)=>fixture.app.dispatchFetch(origin+'/api/'+path,{method:value===undefined?'GET':'POST',headers:{cookie:'vitris-admin-local='+sessions.get(user),...(csrf?{origin}:{}),...(value===undefined?{}:{'content-type':'application/json'})},...(value===undefined?{}:{body:JSON.stringify(value)})});
+ await db.batch(Array.from({length:215},(_,i)=>db.prepare("INSERT INTO leads(id,site_id,name,email,message,source) VALUES(?,'scheduling-browser',?,'synthetic@example.test',?,'Synthetic fixture')").bind('lead-'+String(i).padStart(3,'0'),'Person '+i,i===0?'Older special enquiry':'Synthetic message')));
+ await db.prepare("INSERT INTO leads(id,site_id,name,email,message,source) VALUES('other','other-site','Private','private@example.test','Must not disclose','fixture')").run();
+ let page=await (await call('leads?limit=50')).json() as any;assert.equal(page.followUpsEnabled,false);assert.equal(page.pagination.total,215);
+ assert.equal((await call('leads/follow-up',{id:'lead-000',assignedTo:'reader',dueDate:null,notes:'',completed:false,revision:0})).status,503);
+ for(const sql of (await readFile('packages/admin/migrations/0010_lead_followups.sql','utf8')).replace(/^--.*$/gm,'').split(';').map(x=>x.trim()).filter(Boolean))await db.prepare(sql).run();
+ const write={id:'lead-000',assignedTo:'provider-user',dueDate:'2020-01-01',notes:'Call and discuss the project.',completed:false,revision:0};
+ assert.equal((await call('leads/follow-up',write)).status,200);
+ assert.equal((await call('leads/follow-up',{...write,notes:'Concurrent overwrite'})).status,409);
+ page=await (await call('leads?q=Older&queue=due&assignee=provider-user')).json() as any;assert.equal(page.pagination.total,1);assert.equal(page.pagination.newCount,215);assert.equal(page.rows[0].followUp.revision,1);
+ assert.equal((await call('leads/follow-up',{...write,revision:1,assignedTo:'reader'})).status,400);
+ assert.equal((await call('leads/follow-up',{...write,revision:1},'reader')).status,403);
+ assert.equal((await call('leads/follow-up',{...write,revision:1},'owner',false)).status,403);
+ assert.equal((await call('leads/follow-up',{...write,id:'other'})).status,404);
+ assert.equal((await call('leads/follow-up',{...write,revision:1,dueDate:'2026-02-30'})).status,400);
+ await db.prepare("UPDATE users SET active=0 WHERE id='provider-user'").run();
+ assert.equal((await call('leads/follow-up',{...write,revision:1,notes:'Keep the existing assignment while editing'})).status,200);
+ assert.equal((await call('leads/follow-up',{...write,id:'lead-001'})).status,400);
+ assert.ok(!(await (await call('leads/team')).json() as any).rows.some((r:any)=>r.id==='provider-user'));
+ assert.equal((await call('leads/follow-up',{...write,revision:2,completed:true})).status,200);
+ assert.equal((await (await call('leads?queue=due')).json() as any).pagination.total,0);
+ assert.equal((await (await call('leads?mode=test')).json() as any).writable,false);
+ const ids=new Set<string>();let cursor:string|null=null;
+ do{page=await (await call('leads?limit=50'+(cursor?'&cursor='+encodeURIComponent(cursor):''))).json() as any;for(const row of page.rows){assert.ok(!ids.has(row.id));ids.add(row.id);}cursor=page.pagination.nextCursor;}while(cursor);
+ assert.equal(ids.size,215);assert.equal((await db.prepare('SELECT COUNT(*) n FROM leads').first<{n:number}>())?.n,216);
+});

@@ -1,0 +1,47 @@
+# Stripe integration in the admin harness
+
+The actual Stripe integration is an opt-in factory exported from `@tryvitris/website-admin-harness/billing`. It is separate from the sample dashboard. Each installation configures its own account, currency, approved prices and portal policy, with no shared Vitris login, billing database or Stripe Connect platform. The harness supplies the implementation and agent workflow; it does not impose a subscription business model or copy the prototype’s plans into another website.
+
+Use `createStripeBilling(configuration)` on a seller installation and `createBillingAccount(configuration)` on a paying client’s separate admin. Registration and explicit manifest enablement are required. Ordinary installations do not load the UI, query billing tables, receive hooks, or contact Stripe. Actual Stripe modules disable demo login.
+
+Implemented flows include account/mode verification, customer creation or deliberate linking, approved subscription and one-off Checkout, editable private invoice drafts, separately reviewed finalization and sending, customer portal sessions, authenticated provider invoice/payment links, end-of-period cancellation, signed webhook receipt, operation journals and bounded recovery. A separate compiled UI displays actual empty/setup/connected states and never substitutes sample records. Native plan changes use the configured Stripe portal. Immediate native price/proration editing, refunds/credit notes, usage billing and native tax editing remain separate additions.
+
+The account integration requires valid matching-mode credentials. A live key is not a sandbox key. Live mutations stay disabled unless the installation explicitly enables both the source configuration flag and environment flag. A successful account read does not prove real payment, invoice email, or webhook delivery; complete independent sandbox acceptance before rollout.
+
+See [the packaged agent workflow](../packages/admin/agent/refs/billing.md) for configuration, migration, permissions, secret handling, webhook setup, client grants, scheduling, installation planning and recovery. `vitris-admin billing-plan --dir EXISTING_ADMIN --from PRIVATE_BILLING_CONFIG.json` produces a private installation checklist without account requests or cloud changes.
+
+The optional migration is `packages/admin/modules/billing/migrations/0010_stripe_billing.sql`. It is not part of ordinary initializer migrations. The exact hook routes exist only when the trusted module is registered and enabled; all other browser routes retain session, permission and Origin checks.
+
+Protocol fixtures validate Workers execution, account/mode mismatches, missing keys, redirect refusal, duplicate/concurrent/interrupted operations, invoice draft/finalize/send separation, signed/expired/late events, customer-scoped separate admin access and packed package consumption. Fixture credentials and businesses are synthetic. Real account acceptance is reported separately.
+
+Real sandbox acceptance on November 4, 2026 completed against the business-owned test account: account/mode verification, customer creation, recurring and one-off hosted Checkout with Stripe test cards, subscription activation and paid invoice reconciliation, a separately finalized invoice and client PDF access, customer portal plan changes, payment-method updates and period-end cancellation. Actual signed events were forwarded by the official Stripe CLI to the local Worker; both admin installations showed the authorized customer's current records. The client response excluded private invoice drafts and operation journals. Native cancellation scheduling and reversal were also exercised against Stripe.
+
+This run found and corrected the invoice API's plural `pending_invoice_items_behavior` parameter, date-based portal cancellations using `cancel_at`, and a missing payment history view for one-off payments. Regression coverage exercises those behaviors. A restricted test key authenticated but lacked account-read permission; the supplied standard test key was used explicitly for acceptance. A production installation should use a business-owned restricted key with the documented permissions.
+
+The private verifier is `npm run stripe:verify -- --env BUSINESS_ADMIN/.vitris/stripe/sandbox.env --config BUSINESS_ADMIN/.vitris/stripe/sandbox.config.json`. Explicit installation paths are required; it performs only account/mode reads and never creates financial objects or verifies webhook delivery by inference. Reports default to a mode-specific file beside the configuration. Private acceptance resources and results belong under the owning installation's ignored `.vitris/stripe/`; the review runner uses isolated local databases. No live financial writes, production deployment, public webhook registration or remote database migration occurred.
+
+Final workspace validation on November 4, 2026: `npm run check` passed all 181 tests, including external packed-package consumption and thirteen Stripe server/browser checks. The real-account acceptance listener recorded twenty successful webhook responses, and the reconciled seller/client views had no pending or failed synchronization work. Saved local review screens are `artifacts/stripe-billing/real-sandbox-owner.jpg` and `artifacts/stripe-billing/real-sandbox-client.jpg`.
+
+## Invoice and renewal acceptance extension
+
+The November 4 sandbox extension used separate actual Stripe test clocks/customers, the official CLI's signed-event forwarding, and isolated seller/client Workers with the real Stripe transport. It did not advance the original review customer's subscription or change account-wide recovery/notification settings.
+
+| Scenario | Observed result |
+| --- | --- |
+| Invoice drafting, finalization and repeated same-intent send | One `invoice.sent` event; client invoice/PDF access verified. |
+| Actual invoice email | Dashboard **Send test invoice** accepted for the explicitly approved inbox; the recipient confirmed receipt and working invoice/PDF links. |
+| Successful monthly renewal | A new cycle invoice was automatically finalized and paid; both admin views remained active. |
+| Declined renewal | Invoice remained open/unpaid, payment required a new method, and both views showed `past_due`. |
+| Scheduled retry | Stripe attempted the same invoice again; it remained unpaid and no duplicate invoice was created. |
+| Correction and recovery | Replacing the failing test method and paying restored the invoice to paid and the subscription to active; a subsequent renewal also paid. |
+| 3D Secure requirement | A renewal remained unpaid with `requires_action` and a past-due subscription. Completing the real Stripe-hosted sandbox challenge paid the invoice and restored active state. |
+| Exhausted retries | A separate subscription canceled after nine failed payment attempts (the initial attempt plus eight retries). Its invoice stayed open under the existing sandbox policy; the other client's grant could not see its records. |
+| Final main client | Active subscription, seven paid invoices, no outstanding balance, and no private invoice drafts/operation journal exposed. |
+
+The extension listener recorded 82 successful HTTP 200 webhook responses, including invoice send/failure/action-required events and subscription deletion. Final reconciliation had zero pending/failed work. State snapshots/resource IDs and recipient confirmation are private under `.vitris/stripe/lifecycle-report.json` and `terminal-report.json`. Review images are under `artifacts/stripe-lifecycle/`.
+
+Final verification exercised 185 tests: 184 passed in the full `npm run check` run, including all fourteen Stripe server/browser checks and the ended-subscription UI assertions. The external packed-booking case initially failed because its neighboring website-harness archive lacked the exported API entry point. That case then passed on an isolated rebuild/pack/install/browser rerun outside this workspace. Build and typecheck passed; packed artifact hashes are retained privately. Concurrent builds clean that neighboring package's generated output, so prepare and test the exact release archives from a stable isolated build before publishing.
+
+Stripe's [test-mode invoice-send API](https://docs.stripe.com/api/invoices/send) suppresses actual email despite emitting `invoice.sent`. The UI now explains that distinction; mailbox delivery was verified through the Dashboard test-send flow, not inferred from the API. [Test clocks](https://docs.stripe.com/billing/testing/test-clocks/api-advanced-usage) exercised real provider lifecycle transitions; regression fixtures additionally verify that a delayed failure event cannot regress the recovered paid state. Ended subscriptions hide renewal dates and cancellation actions, including when an old cancellation flag remains set.
+
+Use [the live rollout procedure](STRIPE-LIVE-ROLLOUT.md) for the separately authorized installation release. Live account identity/credentials, catalog/portal, restricted-key permissions, notification/retry policy, deployment/migration, real webhook and scheduler still need installation-specific review. Bank-debit and other asynchronous methods need their own real sandbox acceptance if included in that rollout; successful card/SCA tests do not cover them. The harness still supplies reusable infrastructure and no fixed business pricing or automatic live enrollment.

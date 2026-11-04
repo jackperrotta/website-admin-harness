@@ -6,6 +6,7 @@ import {resolve} from 'node:path';
 import {chromium,type Browser,type BrowserContext,type Page} from 'playwright';
 import {createWebsiteBookingFixture} from './website-booking-fixture.ts';
 import type {SchedulingConfig} from '../packages/contracts/src/scheduling.ts';
+import {captureTypography} from '../../vitris-harness/src/agent/browser-typography.ts';
 describe('paired website/admin booking acceptance', () => {
 let fixture:Awaited<ReturnType<typeof createWebsiteBookingFixture>>,browser:Browser,context:BrowserContext,page:Page,initialConfig:SchedulingConfig;
 const target=new Date(Date.now()+3*86400000),date=target.toISOString().slice(0,10);const errors:string[]=[];
@@ -16,6 +17,19 @@ afterEach(async test=>{await page?.screenshot({path:resolve(`artifacts/website-b
 async function open(){await page.goto(fixture.origin+'/book');await page.getByRole('heading',{name:'Choose a service',exact:true}).waitFor();}
 async function chooseTime(){await page.getByRole('button',{name:'Choose a time',exact:true}).click();await page.getByLabel('Appointment date',{exact:true}).fill(date);await page.getByRole('button',{name:'Find available times',exact:true}).click();await page.getByRole('button',{name:new RegExp('at 12:00 PM GMT')}).click();await page.getByRole('button',{name:'Continue to your details',exact:true}).click();}
 async function details(name='Website Sample'){await page.getByLabel('Full name',{exact:true}).fill(name);await page.getByLabel('Email address',{exact:true}).fill('website-customer@example.test');await page.getByRole('button',{name:'Review appointment',exact:true}).click();await page.getByRole('checkbox',{name:'I have read and accept the booking policy.',exact:true}).check();}
+
+test('booking and private management use shared site typography in desktop and mobile states',{timeout:120000},async()=>{
+ for(const width of [375,1080]){
+  await page.setViewportSize({width,height:1000});await open();
+  const capture=async(state:string)=>{const value=await captureTypography(page,fixture.theme,new URL(page.url()).pathname,width,state);assert.deepEqual(value.failures,[],value.failures.join('\n'));};
+  await capture('service');await page.getByRole('button',{name:'Choose a time',exact:true}).click();await capture('time');
+  await page.getByLabel('Appointment date',{exact:true}).fill(date);await page.getByRole('button',{name:'Find available times',exact:true}).click();await capture('available-times');
+  await page.getByRole('button',{name:/at 12:00 PM GMT/}).click();await page.getByRole('button',{name:'Continue to your details',exact:true}).click();await capture('details');await details();await capture('review');
+  assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+  await page.screenshot({path:resolve('artifacts/website-booking/shared-type-review-'+width+'.png'),fullPage:true});
+  await page.goto(fixture.origin+'/book/manage');await page.getByRole('heading',{name:'View your appointment',exact:true}).waitFor();await capture('management-entry');
+ }
+});
 
 test('a customer books through the compiled website and the appointment is visible in the admin calendar', {timeout:120000},async()=>{
  await open();await chooseTime();await details();await page.screenshot({path:resolve('artifacts/website-booking/desktop-review.png'),fullPage:true});await page.getByRole('button',{name:'Confirm appointment',exact:true}).click();await page.getByRole('heading',{name:'Appointment confirmed',exact:true}).waitFor();

@@ -1,0 +1,52 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {mkdir} from 'node:fs/promises';
+import {chromium} from 'playwright';
+import {createPortfolioFixture} from './client-portfolio-fixture.ts';
+
+test('owner creates and reuses business templates; client gets a full-page mobile journey with validation and saved back/forward progress', {timeout:150000},async()=>{
+  const f=await createPortfolioFixture({onboarding:true}),browser=await chromium.launch({headless:true});
+  try {
+    const owner=await browser.newPage({viewport:{width:1536,height:1100}}),errors:string[]=[];
+    owner.on('pageerror',e=>errors.push(e.message));await owner.context().addCookies([{name:'vitris-admin-local',value:'synthetic-portfolio-owner',url:f.origin}]);
+    await owner.goto(f.origin+'/#client-onboarding');await owner.getByRole('button',{name:/Onboarding templates/}).click();
+    const starter=owner.locator('.ob-template-card').filter({has:owner.getByRole('heading',{name:'Home & construction',exact:true})});
+    await starter.getByRole('button',{name:'Customize',exact:true}).click();
+    await owner.getByLabel('Template name',{exact:true}).fill('Renovation clients');
+    await owner.getByLabel('Business type',{exact:true}).fill('Custom remodelers');
+    await owner.getByLabel('Client signup headline',{exact:true}).fill('Let’s build something good.');
+    await owner.getByRole('button',{name:/Save template/}).click();
+    const saved=owner.locator('.ob-template-card').filter({has:owner.getByRole('heading',{name:'Renovation clients',exact:true})});await saved.waitFor();
+    await saved.getByRole('button',{name:/Use template/}).click();
+    const prepare=owner.getByRole('dialog',{name:'Prepare a prospect account'});
+    await prepare.getByLabel('Business name',{exact:true}).fill('Sample Remodeling');await prepare.getByLabel('Contact name',{exact:true}).fill('Riley');await prepare.getByLabel('Contact email',{exact:true}).fill('riley@example.test');
+    await prepare.getByLabel('Field 1 prefilled value',{exact:true}).fill('555-0134');await prepare.getByLabel('Field 2 prefilled value',{exact:true}).fill('Example County');
+    await prepare.getByRole('button',{name:/Save these questions as a template/}).click();await prepare.getByLabel('New template name',{exact:true}).fill('My tailored remodeler');await prepare.getByRole('button',{name:'Save reusable template',exact:true}).click();
+    await prepare.getByText('A reusable template was saved without client answers.').waitFor();assert.equal(await prepare.getByLabel('Field 1 prefilled value',{exact:true}).inputValue(),'555-0134');
+    await prepare.getByRole('button',{name:/Prepare account/}).click();await owner.getByRole('button',{name:'Prospects',exact:true}).click();
+    await owner.getByRole('button',{name:/Manage/}).click();await owner.getByRole('button',{name:'Generate setup link',exact:true}).click();
+    const invitation=owner.getByRole('dialog',{name:'Their invitation is ready'});const link=await invitation.getByLabel('Local setup link').inputValue();
+    await invitation.getByRole('button',{name:'Close dialog',exact:true}).click();await owner.getByRole('dialog',{name:'Sample Remodeling',exact:true}).getByRole('button',{name:'Close dialog'}).click();
+    await owner.getByRole('button',{name:/Onboarding templates/}).click();await mkdir('artifacts/onboarding-templates',{recursive:true});await owner.screenshot({path:'artifacts/onboarding-templates/templates-desktop.png',fullPage:true});
+    const context=await browser.newContext({viewport:{width:1440,height:1050}}),client=await context.newPage();client.on('pageerror',e=>errors.push(e.message));
+    await client.goto(link);await client.getByRole('button',{name:/Complete signup/}).click();await client.getByRole('heading',{name:'Let’s build something good.'}).waitFor();
+    assert.equal(await client.getByRole('dialog').count(),0);assert.equal(await client.getByLabel(/Which areas do you serve/).inputValue(),'Example County');
+    await client.screenshot({path:'artifacts/onboarding-templates/business-desktop.png',fullPage:true});
+    await client.getByRole('button',{name:/Save & continue/}).click();await client.getByRole('heading',{name:'Tell us what matters.'}).waitFor();
+    await client.getByRole('button',{name:/Save & continue/}).click();await client.getByText('Please complete this field.',{exact:true}).waitFor();
+    assert.equal(await client.getByLabel(/What kind of projects are your specialty/).evaluate(el=>el===document.activeElement),true);
+    await client.getByLabel(/What kind of projects are your specialty/).fill('Custom kitchens and additions');
+    await client.screenshot({path:'artifacts/onboarding-templates/website-desktop.png',fullPage:true});
+    await client.getByRole('button',{name:/Save & continue/}).click();await client.getByRole('heading',{name:'Your space starts here.'}).waitFor();
+    await client.getByRole('button',{name:'← Back',exact:true}).click();await client.getByRole('heading',{name:'Tell us what matters.'}).waitFor();assert.equal(await client.getByLabel(/What kind of projects are your specialty/).inputValue(),'Custom kitchens and additions');
+    await client.getByRole('button',{name:'← Back to your preview',exact:true}).click();await client.getByRole('heading',{name:'A little preview, Riley.'}).waitFor();
+    await client.getByRole('button',{name:/Continue signup/}).click();await client.getByRole('heading',{name:'Tell us what matters.'}).waitFor();
+    await client.reload();await client.getByRole('heading',{name:'Tell us what matters.'}).waitFor();assert.equal(await client.getByLabel(/What kind of projects are your specialty/).inputValue(),'Custom kitchens and additions');
+    await client.setViewportSize({width:390,height:844});assert.ok(await client.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
+    await client.screenshot({path:'artifacts/onboarding-templates/website-mobile.png',fullPage:true});
+    await client.getByRole('button',{name:/Save & continue/}).click();await client.getByRole('heading',{name:'Your space starts here.'}).waitFor();
+    await client.screenshot({path:'artifacts/onboarding-templates/account-mobile.png',fullPage:true});
+    assert.equal(await client.getByLabel(/Choose a password/).evaluate(el=>getComputedStyle(el).fontSize),'16px');
+    assert.equal(await client.getByRole('dialog').count(),0);assert.deepEqual(errors,[]);
+  } finally {await browser.close();await f.app.dispose();}
+});

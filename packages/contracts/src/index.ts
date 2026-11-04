@@ -1,12 +1,19 @@
 import {schedulingPermissions} from './scheduling.ts';
+import {clientPortfolioPermissions} from './client-portfolio.ts';
+import {clientOnboardingPermissions} from './client-onboarding.ts';
+import {billingPermissions} from './billing.ts';
+export * from './billing.ts';
+export * from './stripe-billing.ts';
+export * from './client-portfolio.ts';
+export * from './client-onboarding.ts';
 export * from './scheduling.ts';
 export const contractVersion = 1;
 export const coreSections = ['overview', 'leads', 'analytics', 'settings', 'access', 'activity'] as const;
-export const permissions = ['leads:read', 'leads:write', 'analytics:read', 'settings:write', 'access:read', 'activity:read', 'tasks:read', 'tasks:write', ...schedulingPermissions] as const;
+export const permissions = ['leads:read', 'leads:write', 'analytics:read', 'settings:write', 'access:read', 'access:write', 'activity:read', 'tasks:read', 'tasks:write', ...schedulingPermissions, ...clientPortfolioPermissions, ...clientOnboardingPermissions, ...billingPermissions] as const;
 export type Permission = typeof permissions[number];
 export type Role = 'owner' | 'administrator' | 'editor' | 'analyst';
 export const roles: Record<Role, readonly Permission[]> = {
-  owner: permissions, administrator: permissions,
+  owner: permissions, administrator: permissions.filter(p => p!=='access:write' && !(clientPortfolioPermissions as readonly string[]).includes(p) && !(clientOnboardingPermissions as readonly string[]).includes(p) && !(billingPermissions as readonly string[]).includes(p)),
   editor: ['leads:read', 'leads:write', 'activity:read', 'tasks:read', 'tasks:write'],
   analyst: ['analytics:read', 'activity:read'],
 };
@@ -36,6 +43,7 @@ export function isWebsiteTheme(value: unknown): value is WebsiteTheme {
   return isObject(value) && Object.keys(value).length > 0 && Object.entries(value).every(([key,color]) => (websiteColorKeys as readonly string[]).includes(key) && isThemeColor(color));
 }
 export interface ModuleDefinition {
+  ui?: 'stripe-billing' | 'stripe-account';
   id: string; version: number; label: string; permission: Permission;
   description: string;
 }
@@ -44,12 +52,26 @@ export interface BootstrapResponse {
   manifest: AdminManifest; user: User | null; passwordLogin: boolean;
   localDemo: boolean; connected: boolean; modules: ModuleDefinition[]; capabilities: string[];
   theme?: WebsiteTheme | null; themeStatus?: 'website' | 'installation' | 'unavailable' | 'default';
+  accountAuth?: AccountCapabilities;
+  emailLoginConfigured?: boolean;
+  privateLocalSignIn?: boolean;
 }
 export type DataSource = 'synthetic' | 'connected' | 'not-connected';
 export interface LeadRow {
   id: string; name: string; email: string; message: string; status: string; created_at: string;
   source?: string | null; phone?: string | null; fields_json?: string | null;
   notification_policy?: string | null; notification_status?: string | null; notification_error?: string | null;
+  followUp?: LeadFollowUp;
+}
+export interface LeadFollowUp {assignedTo:string|null;dueDate:string|null;notes:string;completed:boolean;revision:number;updatedAt:string|null}
+export interface LeadPagination {version:1;total:number;newCount:number;nextCursor:string|null}
+export interface LeadTeamMember {id:string;email:string}
+export function isLeadFollowUp(value:unknown):value is LeadFollowUp {
+  if(!isObject(value))return false;
+  return (value.assignedTo===null||typeof value.assignedTo==='string'&&value.assignedTo.length>0&&value.assignedTo.length<=100)&&(value.dueDate===null||typeof value.dueDate==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(value.dueDate)&&Number.isFinite(Date.parse(value.dueDate+'T00:00:00Z'))&&new Date(value.dueDate+'T00:00:00Z').toISOString().slice(0,10)===value.dueDate)&&typeof value.notes==='string'&&value.notes.length<=3000&&typeof value.completed==='boolean'&&Number.isSafeInteger(value.revision)&&Number(value.revision)>=0&&(value.updatedAt===null||typeof value.updatedAt==='string');
+}
+export function isLeadPagination(value:unknown):value is LeadPagination {
+  return isObject(value)&&value.version===1&&[value.total,value.newCount].every(n=>Number.isSafeInteger(n)&&Number(n)>=0)&&(value.nextCursor===null||typeof value.nextCursor==='string'&&value.nextCursor.length<=4096);
 }
 export const analyticsMetricKeys = ['sessions','bounces','engaged','duration_ms','leave_count','scroll_25','scroll_50','scroll_75','scroll_100','converts_form','converts_tel','converts_mailto','converts_maps','engage_nav','engage_btn','engage_img','engage_carousel'] as const;
 export const analyticsBreakdownKeys = ['top_paths_json','top_refs_json','channels_json','devices_json','hours_json','top_engage_json'] as const;
@@ -57,10 +79,14 @@ export type AnalyticsMetric = 'views' | 'visitors' | 'enquiries' | typeof analyt
 export type AnalyticsBreakdown = typeof analyticsBreakdownKeys[number];
 export interface AnalyticsItem {key: string; n: number}
 export type AnalyticsRow = {day: string; views: number; visitors: number; enquiries: number} & Partial<Record<typeof analyticsMetricKeys[number],number>> & Partial<Record<AnalyticsBreakdown,string>>;
-export interface LeadsResponse {rows: LeadRow[]; source: DataSource; writable?: boolean; message?: string; mode?: string}
+export interface LeadsResponse {rows: LeadRow[]; source: DataSource; writable?: boolean; message?: string; mode?: string; followUpsEnabled?:boolean; pagination?:LeadPagination; truncated?:boolean}
 export interface AnalyticsResponse {rows: AnalyticsRow[]; previousRows?: AnalyticsRow[]; source: DataSource; timezone: string; days: number; generatedAt?: string}
 export interface SettingsResponse {notification_email: string; revision: number}
 export interface AccessRow extends User {active: number}
+export interface AccountCapabilities {enabled:boolean;emailReady:boolean;setupAvailable:boolean;emailVerified:boolean;canInvite:boolean}
+export interface AccountAction {purpose:'owner'|'invite'|'verify'|'reset';email:string;expiresAt:number;business:string}
+export interface TeamInvitation {id:string;email:string;role:string;expiresAt:number;status:'accepted'|'canceled'|'expired'|'pending';delivery:'pending'|'sending'|'sent'|'failed'|'superseded'}
+export interface AccessResponse extends RowsResponse<AccessRow & {email_verified_at?:number|null}> {invitations?:TeamInvitation[];accountAuth?:AccountCapabilities}
 export interface ActivityRow {id: string; actor: string; action: string; created_at: string}
 export interface TaskRow {id: string; title: string; done: number}
 export interface RowsResponse<T> {rows: T[]; message?: string}
@@ -74,7 +100,7 @@ export function isObject(value: unknown): value is Record<string, unknown> {
 export function isLeadRow(value: unknown): value is LeadRow {
   if (!isObject(value)) return false;
   return ['id', 'name', 'email', 'message', 'status', 'created_at'].every(key => typeof value[key] === 'string') &&
-    ['source', 'phone', 'fields_json', 'notification_policy', 'notification_status', 'notification_error'].every(key => value[key] === undefined || value[key] === null || typeof value[key] === 'string');
+    ['source', 'phone', 'fields_json', 'notification_policy', 'notification_status', 'notification_error'].every(key => value[key] === undefined || value[key] === null || typeof value[key] === 'string') && (value.followUp===undefined||isLeadFollowUp(value.followUp));
 }
 export function isAnalyticsRow(value: unknown): value is AnalyticsRow {
   if (!isObject(value) || typeof value.day !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value.day)) return false;
