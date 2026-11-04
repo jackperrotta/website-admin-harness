@@ -18,6 +18,10 @@ test('packed website and admin packages accept a booking into an already-open pa
     if(file.split(/[\\/]/).includes('..'))throw Error('Unexpected website source path');
     const destination=join(websiteSnapshot,file);await mkdir(dirname(destination),{recursive:true});await copyFile(join(websiteSource,file),destination);
   }
+  const websitePackagePath=join(websiteSnapshot,'package.json'),websitePackage=JSON.parse(await readFile(websitePackagePath,'utf8'));
+  // The paired website must consume these exact candidate contracts/runtime, not alpha copies.
+  for(const directory of ['admin','contracts']){const candidate=JSON.parse(await readFile(resolve('packages',directory,'package.json'),'utf8'));websitePackage.dependencies[candidate.name]=candidate.version;}
+  await writeFile(websitePackagePath,JSON.stringify(websitePackage,null,2)+'\n');
   await symlink(join(websiteSource,'node_modules'),join(websiteSnapshot,'node_modules'),process.platform==='win32'?'junction':'dir');
   const packages:string[]=[];
   for(const path of ['packages/admin','packages/contracts','packages/create-admin','../vitris-harness']) {
