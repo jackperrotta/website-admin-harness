@@ -24,3 +24,5 @@ Read `refs/reporting-pairing.md` before enabling machine analytics pairing. It i
 Read `refs/webmaster-sign-on.md` before enabling named cross-installation sign-in or linked logout. Human sign-on, organization reporting and billing have independent grants.
 
 For repeatable client onboarding, use refs/reporting-pairing.md’s 1.4.0 Add website plan/apply handoff. Configuration is not owner approval; retain separate reporting, named sign-in and billing grants.
+
+Before maintenance and publication, run the installation update check and read `refs/package-updates.md`. Prepare and test compatible pinned updates; reuse existing daily care and follow existing publication permissions. Missing release or deployed-version evidence is unknown. Never overwrite authored configuration as a kit refresh.

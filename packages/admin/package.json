@@ -1,6 +1,6 @@
 {
   "name": "@tryvitris/website-admin-harness",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "type": "module",
   "license": "MIT",
   "description": "Cloudflare business admin runtime and agent kit",
@@ -44,6 +44,10 @@
     "./signon": {
       "types": "./dist/signon.d.ts",
       "default": "./dist/signon.js"
+    },
+    "./maintenance": {
+      "types": "./dist/maintenance.d.ts",
+      "default": "./dist/maintenance.js"
     }
   },
   "bin": {
@@ -81,7 +85,9 @@
     "dist/pairing.d.ts",
     "dist/signon.js",
     "dist/signon.d.ts",
-    "vitris-release.json"
+    "vitris-release.json",
+    "dist/maintenance.js",
+    "dist/maintenance.d.ts"
   ],
   "dependencies": {
     "react": "^19.0.0",
@@ -102,5 +108,14 @@
   "homepage": "https://github.com/jackperrotta/website-admin-harness#readme",
   "bugs": {
     "url": "https://github.com/jackperrotta/website-admin-harness/issues"
+  },
+  "vitris": {
+    "maintenance": {
+      "version": 1,
+      "policy": "prepare-and-test",
+      "stableChannel": "latest",
+      "command": "vitris-admin updates check --dir . --json",
+      "schedule": "reuse-existing-daily-care"
+    }
   }
 }

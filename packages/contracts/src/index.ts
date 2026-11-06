@@ -196,3 +196,5 @@ export function validateModules(manifest: AdminManifest, modules: ModuleDefiniti
   }
   for (const enabled of manifest.modules) if (!ids.has(enabled)) throw new Error(`Module ${enabled} is not installed`);
 }
+
+export * from './maintenance.ts';

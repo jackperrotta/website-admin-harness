@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "version": "1.5.0",
+  "packages": {
+    "runtime": {
+      "title": "Daily agent package maintenance",
+      "notesScope": "package",
+      "notes": [
+        "Adds bounded public-registry version discovery and pinned update plans for the stable admin release family and directly declared website harness. Incomplete releases, drift, local overrides and breaking updates are held for review.",
+        "Adds idempotent existing-installation maintenance instructions and new-installation check scripts. Preparation and testing follow existing publishing permissions; no scheduler or production action is activated."
+      ]
+    },
+    "contracts": {
+      "title": "Typed agent maintenance reports and plans",
+      "notesScope": "package",
+      "notes": [
+        "Adds the shared package-family, status, release identity and prepare-and-test plan contract used by the admin and website daily maintenance tooling."
+      ]
+    },
+    "initializer": {
+      "title": "Initialize with daily maintenance guidance",
+      "notesScope": "package",
+      "notes": [
+        "Pins runtime 1.5.0 so new admins receive the update-check script and agent maintenance instructions. Scaffolding does not activate an external schedule or change deployment authority."
+      ]
+    }
+  }
+}

@@ -7,6 +7,7 @@ import {mkdtemp,readFile,writeFile,mkdir,copyFile} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import {tmpdir} from 'node:os';
 import {join,resolve} from 'node:path';
+import {pathToFileURL} from 'node:url';
 import {createPortfolioFixture} from './client-portfolio-fixture.ts';
 import {createBillingPair} from './billing-fixture.ts';
 import {stripePair} from './stripe-fixture.ts';
@@ -56,6 +57,7 @@ test('packed npm packages scaffold an external installation, agent kit, and safe
   assert.ok(paths.includes('migrations/0009_account_lifecycle.sql')&&paths.includes('dist/accounts.d.ts')&&paths.includes('agent/refs/accounts.md'));
   assert.ok(paths.includes('migrations/0011_webmaster_connections.sql')&&paths.includes('dist/contracts/webmaster.d.ts')&&paths.includes('agent/refs/webmaster.md'));
   assert.ok(paths.includes('dist/signon.js')&&paths.includes('dist/signon.d.ts')&&paths.includes('dist/contracts/signon.d.ts')&&paths.includes('agent/refs/webmaster-sign-on.md')&&paths.includes('modules/webmaster/migrations/0013_webmaster_signon.sql')&&!paths.includes('migrations/0013_webmaster_signon.sql'));
+  assert.ok(paths.includes('dist/maintenance.js')&&paths.includes('dist/maintenance.d.ts')&&paths.includes('agent/refs/package-updates.md'));
   assert.ok(paths.includes('dist/pairing.js')&&paths.includes('dist/pairing.d.ts')&&paths.includes('dist/contracts/pairing.d.ts')&&paths.includes('agent/refs/reporting-pairing.md'));
   assert.ok(paths.includes('modules/webmaster/migrations/0014_connection_approval.sql')&&!paths.includes('migrations/0014_connection_approval.sql'));
   assert.ok(paths.includes('modules/webmaster/migrations/0012_reporting_pairing.sql')&&!paths.includes('migrations/0012_reporting_pairing.sql'));
@@ -101,6 +103,8 @@ test('packed npm packages scaffold an external installation, agent kit, and safe
   const localConfig=JSON.parse(await readFile(join(target,'wrangler.local.jsonc'),'utf8')) as {main: string};assert.equal(localConfig.main,'worker.local.ts');
   const tsconfig=JSON.parse(await readFile(join(target,'tsconfig.json'),'utf8')) as {compilerOptions: {strict: boolean}};assert.equal(tsconfig.compilerOptions.strict,true);
   npm(['install','--ignore-scripts','--no-audit','--no-fund',join(root,runtime.filename)],target);
+  const maintenance=await import(pathToFileURL(join(tool,'node_modules/@tryvitris/website-admin-harness/dist/maintenance.js')).href);const maintained=await maintenance.checkPackageUpdates(target,{fetcher:async(url:string)=>{const name=decodeURIComponent(new URL(url).pathname.slice(1).replace(/\/latest$/,'')),version='1.5.1';return Response.json({name,version,dist:{integrity:'sha512-'+Buffer.alloc(64,1).toString('base64'),tarball:'https://registry.npmjs.org/'+name+'/-/'+name.split('/')[1]+'-'+version+'.tgz'}});}});assert.equal(maintenance.planPackageUpdates(maintained).ready,false);assert.equal(maintained.packages[0].status,'unmanaged');assert.equal(maintenance.planPackageUpdates(maintained).install,null);assert.match(JSON.parse(await readFile(join(target,'package.json'),'utf8')).scripts['updates:check'],/updates check/);
+
   await mkdir(join(target,'modules/client-portfolio'),{recursive:true});
   await writeFile(join(target,'modules/client-portfolio/index.ts'),"export {clientPortfolioPrototype as default} from '@tryvitris/website-admin-harness/prototypes/client-portfolio';\n");
   await mkdir(join(target,'modules/billing'),{recursive:true});

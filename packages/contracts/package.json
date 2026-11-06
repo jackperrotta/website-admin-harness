@@ -1,6 +1,6 @@
 {
   "name": "@tryvitris/website-admin-contracts",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "type": "module",
   "license": "MIT",
   "description": "Validated installation and module contracts for Cloudflare business admin apps",
@@ -33,5 +33,14 @@
   "homepage": "https://github.com/jackperrotta/website-admin-harness#readme",
   "bugs": {
     "url": "https://github.com/jackperrotta/website-admin-harness/issues"
+  },
+  "vitris": {
+    "maintenance": {
+      "version": 1,
+      "policy": "prepare-and-test",
+      "stableChannel": "latest",
+      "command": "vitris-admin updates check --dir . --json",
+      "schedule": "reuse-existing-daily-care"
+    }
   }
 }
