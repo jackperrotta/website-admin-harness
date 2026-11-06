@@ -7,6 +7,7 @@ import {spawnSync,execFileSync} from 'node:child_process';
 import {registryPackage,waitForRegistry} from './release-registry.ts';
 import {assertSafeArchive} from './publication-safety.ts';
 import {stableRelease,type ReleasePackageManifest} from './release-policy.ts';
+import {notifyDocumentation,assertReleaseDocumentation} from './release-docs.ts';
 
 async function main(){
 const dryRun=process.argv.includes('--dry-run')||process.env.npm_config_dry_run==='true';
@@ -22,6 +23,7 @@ for(const pkg of manifest.packages){
   const archive=await readFile(join(directory,pkg.filename));
   if('sha512-'+createHash('sha512').update(archive).digest('base64')!==pkg.integrity)throw Error('Release archive changed: '+pkg.name);
   await assertSafeArchive(join(directory,pkg.filename));
+  assertReleaseDocumentation(JSON.parse(execFileSync('tar',['-xOf',join(directory,pkg.filename),'package/vitris-release.json'],{encoding:'utf8',maxBuffer:2*1024*1024,windowsHide:true})),pkg.name,pkg.version);
 }
 const results: (VerifiedPackage | {name: string; version: string; dryRun: true; integrity: string})[]=[];
 const progressFile=join(directory,'publication-progress.json');
@@ -45,5 +47,10 @@ for(const pkg of manifest.packages){
 const receipt={commit,version,tag,dryRun,packages:results,verifiedAt:new Date().toISOString()};
 await writeFile(join(directory,dryRun?'publication-dry-run.json':'publication-receipt.json'),JSON.stringify(receipt,null,2)+'\n');
 console.log(JSON.stringify(receipt,null,2));
+if(!dryRun){
+ const documentation=await notifyDocumentation(resolve('.'),manifest.packages.map(pkg=>({name:pkg.name,version:pkg.version,integrity:pkg.integrity})));
+ await writeFile(join(directory,'documentation-receipt.json'),JSON.stringify(documentation,null,2)+'\n');
+ console.log(JSON.stringify({documentation},null,2));
+}
 }
 main().catch(error=>{console.error(error instanceof Error ? error.message : String(error));process.exitCode=1;});

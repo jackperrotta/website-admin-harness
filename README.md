@@ -126,3 +126,10 @@ Customer email and private cancellation/rescheduling link setup: [reference](pac
 Version 1.2.0 includes client-approved organization analytics pairing. See [the pairing installation and protocol guide](packages/admin/agent/refs/reporting-pairing.md). It is opt-in and does not enable machine access or billing on existing installations.
 
 Version 1.3.0 adds opt-in named webmaster sign-on and linked logout. See [installation and recovery](packages/admin/agent/refs/webmaster-sign-on.md). Existing human permissions, reporting grants and billing remain separate.
+
+
+### Repeatable client connection setup
+
+The 1.4.0 connection capability supports one client-owner review for organization analytics reporting and optional named sign-in to an existing account. Reporting, human membership, SSO and billing retain independent grants. It never creates an account, changes a role or starts a subscription. See [the installation handoff and recovery guide](packages/admin/agent/refs/reporting-pairing.md#repeatable-add-website-setup-140).
+
+An authenticated Vitris owner starts from Add website, reviews exact discovered identities and requests approval. An unprepared client receives a public setup-file handoff for its installation agent. The `webmaster-setup --dir EXISTING_ADMIN --from CONNECTION_FILE --plan|--apply` CLI prepares a local reviewable diff, optional migration inputs and only new secret inputs; backup, migration, secret installation and deployment remain explicit actions on the client’s owning resources. Existing trust pins, keys, backend bindings, forms, accounts and billing must be preserved.

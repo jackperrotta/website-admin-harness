@@ -13,3 +13,6 @@ artifacts/
 packages/admin/bin/*.mjs
 packages/admin/bin/*.d.mts
 packages/create-admin/index.mjs
+
+# Generated public release manifests are packed from versioned docs/releases input.
+/packages/*/vitris-release.json

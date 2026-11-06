@@ -1,6 +1,6 @@
 {
   "name": "@tryvitris/website-admin-harness",
-  "version": "1.3.1",
+  "version": "1.4.0",
   "type": "module",
   "license": "MIT",
   "description": "Cloudflare business admin runtime and agent kit",
@@ -80,7 +80,8 @@
     "dist/pairing.js",
     "dist/pairing.d.ts",
     "dist/signon.js",
-    "dist/signon.d.ts"
+    "dist/signon.d.ts",
+    "vitris-release.json"
   ],
   "dependencies": {
     "react": "^19.0.0",

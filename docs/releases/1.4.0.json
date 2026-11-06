@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "version": "1.4.0",
+  "packages": {
+    "runtime": {
+      "title": "Owner-approved reporting and named sign-in setup",
+      "notesScope": "package",
+      "notes": [
+        "Adds an explicit client-owner choice to link an existing local account during analytics reporting approval, preserving account roles, organization reporting and billing.",
+        "Adds a local webmaster-setup plan/apply command for reviewed broker pins, optional migrations and separate new-key inputs. Cloud deployment and migrations remain explicit."
+      ]
+    },
+    "contracts": {
+      "title": "Optional combined connection approval contract",
+      "notesScope": "package",
+      "notes": [
+        "Adds versioned combined-setup capability discovery, optional named-subject intent, owner-selected existing-account approval and explicit sign-on result metadata. Legacy reporting-only requests remain supported."
+      ]
+    },
+    "initializer": {
+      "title": "Initialize with runtime 1.4.0",
+      "notesScope": "package",
+      "notes": [
+        "Updates the exact runtime dependency to 1.4.0. The initializer scaffolding and cloud-provisioning requirements are unchanged."
+      ]
+    }
+  }
+}

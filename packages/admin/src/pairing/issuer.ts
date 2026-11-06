@@ -1,3 +1,4 @@
+import {PairingSignOn} from './signon-approval.ts';
 import {pairingBase,pairingPolicy,reportingOperations,samePairingIdentity,type PairingIdentity,type PairingPeer,type PairingEnvelope,type PairingRequestView,type PairingGrantView} from '../../../contracts/src/pairing.ts';
 import {analyticsMetricKeys,analyticsBreakdownKeys,type AdminManifest,type User} from '../../../contracts/src/index.ts';
 import type {AdminEnv} from '../worker.ts';
@@ -11,7 +12,7 @@ const fail=(status:number,code:string,message:string):never=>{throw new PairingE
 function strict(value:Record<string,any>,keys:string[]){if(Object.keys(value).some(k=>!keys.includes(k)))fail(400,'invalid_request','Unexpected pairing field.');}
 function identifier(value:unknown):asserts value is string {if(typeof value!=='string'||!/^[-\w]{16,100}$/.test(value))fail(400,'invalid_request','Invalid pairing identifier.');}
 export class PairingIssuer {
-  private scope:(string)[];
+  private scope:(string)[];private get signOn(){return new PairingSignOn(this.env,this.manifest);}
   constructor(private env:AdminEnv,private manifest:AdminManifest){this.scope=[manifest.installationId,manifest.site.id,manifest.adminOrigin];}
   private sql(query:string,...args:any[]){return this.env.DB.prepare(query).bind(...this.scope,...args);}
   private aad(kind:string,id:string){return JSON.stringify(['reporting-pairing-v1',...this.scope,kind,id]);}
@@ -22,10 +23,10 @@ export class PairingIssuer {
   private async request(id:unknown){identifier(id);const row=await this.sql('SELECT * FROM webmaster_pairing_requests WHERE installation_id=? AND site_id=? AND admin_origin=? AND id=?',id).first<RequestRow>();if(!row)fail(404,'invalid_request','Pairing request not found.');return row!;}
   private async grant(id:unknown){identifier(id);const row=await this.sql('SELECT * FROM webmaster_reporting_grants WHERE installation_id=? AND site_id=? AND admin_origin=? AND id=?',id).first<GrantRow>();if(!row)fail(403,'forbidden','Reporting grant is unavailable.');return row!;}
   private async allowed(grant:GrantRow){if(grant.revoked_at!==null||!await this.activeOrganization(grant.organization_id))fail(403,'forbidden','Reporting access has been revoked.');}
-  private async audit(user:User,action:string){const id=random();await this.env.DB.batch([this.env.DB.prepare('INSERT INTO audit(id,actor,action) VALUES(?,?,?)').bind(id,user.email,action),this.sql('INSERT INTO webmaster_activity(installation_id,site_id,admin_origin,audit_id,person_id) VALUES(?,?,?,?,?)',id,user.id)]);}
+  private async audit(user:User,action:string,organizationId?:string,organizationName?:string){const id=random();await this.env.DB.batch([this.env.DB.prepare('INSERT INTO audit(id,actor,action) VALUES(?,?,?)').bind(id,user.email,action),this.sql('INSERT INTO webmaster_activity(installation_id,site_id,admin_origin,audit_id,person_id,organization_id,organization_name) VALUES(?,?,?,?,?,?,?)',id,user.id,organizationId||null,organizationName||null)]);}
   async handle(request:Request,user:User|null):Promise<Response>{
     await this.ready();const path=new URL(request.url).pathname.slice(pairingBase.length);
-    if(path==='/capabilities'&&request.method==='GET')return Response.json({version:1,issuer:identity(this.manifest),siteOrigin:this.manifest.site.origin,operations:reportingOperations,scope:'analytics:read',requestPath:pairingBase+'/request',approvalPath:'/#webmaster-pairing'});
+    if(path==='/capabilities'&&request.method==='GET')return Response.json({version:1,issuer:identity(this.manifest),siteOrigin:this.manifest.site.origin,operations:reportingOperations,scope:'analytics:read',requestPath:pairingBase+'/request',approvalPath:'/#webmaster-pairing',connectionSetup:{version:1,signOn:!!await this.signOn.available()}});
     if(['/approval','/approve','/reject','/grants','/revoke-grant'].includes(path))return this.owner(request,user,path);
     if(request.method!=='POST'||!['/request','/poll','/exchange','/report','/rotate','/revoke'].includes(path))fail(404,'unsupported','Pairing endpoint not found.');
     const input=await readJSON(request);strict(input,['version','identity','target','path','time','nonce','tokenHash','request']);
@@ -36,7 +37,7 @@ export class PairingIssuer {
     const authorization=request.headers.get('authorization');if(authorization!==null&&!/^Bearer [-\w]{64}$/.test(authorization))fail(401,'unauthorized','Invalid reporting credential.');const token=authorization?.slice(7)||'';if(envelope.tokenHash!==await hash(token))fail(401,'unauthorized','Credential binding failed.');
     let row:RequestRow|undefined,grant:GrantRow|undefined,key:JsonWebKey;
     if(path==='/request'){
-      strict(envelope.request,['requestId','challenge']);identifier(envelope.request.requestId);if(typeof envelope.request.challenge!=='string'||!/^[-\w]{43}$/.test(envelope.request.challenge))fail(400,'invalid_request','PKCE S256 is required.');
+      strict(envelope.request,['requestId','challenge','signOn']);identifier(envelope.request.requestId);if(typeof envelope.request.challenge!=='string'||!/^[-\w]{43}$/.test(envelope.request.challenge))fail(400,'invalid_request','PKCE S256 is required.');
       row=await this.sql('SELECT * FROM webmaster_pairing_requests WHERE installation_id=? AND site_id=? AND admin_origin=? AND id=?',envelope.request.requestId).first<RequestRow>()||undefined;
       if(row)key=JSON.parse(row.key_json);else{
         const rate=await this.env.DB.prepare('INSERT INTO auth_limits(key,attempts,expires_at) VALUES(?,1,?) ON CONFLICT(key) DO UPDATE SET attempts=attempts+1 RETURNING attempts').bind(await hash(JSON.stringify([...this.scope,peer!.adminOrigin,Math.floor(now()/600)])),now()+1200).first<{attempts:number}>();if(!rate||rate.attempts>30)fail(429,'forbidden','Too many pairing requests.');
@@ -51,11 +52,11 @@ export class PairingIssuer {
     await this.sql('DELETE FROM webmaster_pairing_nonces WHERE installation_id=? AND site_id=? AND admin_origin=? AND expires_at<?',now()).run();
     await this.sql('UPDATE webmaster_pairing_requests SET credential_cipher=NULL,code_cipher=NULL WHERE installation_id=? AND site_id=? AND admin_origin=? AND receipt_expires_at<?',now()).run();
     await this.sql('DELETE FROM webmaster_pairing_receipts WHERE installation_id=? AND site_id=? AND admin_origin=? AND expires_at<?',now()).run();
-    const data=envelope.request;
+    const data=envelope.request;if(path==='/request'&&data.signOn!==undefined)await this.signOn.validate(data.signOn,envelope.identity,key!);
     if(path==='/request'){
       const intent=await hash(JSON.stringify([identity(this.manifest),identity({installationId:peer!.installationId,site:{id:peer!.siteId},adminOrigin:peer!.adminOrigin}),data]));
       if(row&&row.intent_hash!==intent)fail(409,'conflict','Pairing request identity changed.');
-      if(!row)await this.sql('INSERT INTO webmaster_pairing_requests(installation_id,site_id,admin_origin,id,organization_id,organization_name,consumer_json,key_json,challenge,intent_hash,expires_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)',data.requestId,peer!.organizationId,peer!.organizationName,JSON.stringify({installationId:peer!.installationId,siteId:peer!.siteId,adminOrigin:peer!.adminOrigin}),JSON.stringify(key!),data.challenge,intent,now()+600).run();
+      if(!row){const insert=this.sql('INSERT INTO webmaster_pairing_requests(installation_id,site_id,admin_origin,id,organization_id,organization_name,consumer_json,key_json,challenge,intent_hash,expires_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)',data.requestId,peer!.organizationId,peer!.organizationName,JSON.stringify({installationId:peer!.installationId,siteId:peer!.siteId,adminOrigin:peer!.adminOrigin}),JSON.stringify(key!),data.challenge,intent,now()+600);await this.env.DB.batch([insert,...(data.signOn!==undefined?[await this.signOn.reserve(data.requestId as string,data.signOn,key!)]:[])]);}
       row=await this.request(data.requestId);if(row.revoked_at!==null||row.expires_at<=now())fail(410,'expired','Pairing request expired. Start a new request.');
       return Response.json({version:1,requestId:row.id,expiresAt:row.expires_at,approvalURL:this.manifest.adminOrigin+'/#webmaster-pairing?request='+encodeURIComponent(row.id),issuer:identity(this.manifest),siteOrigin:this.manifest.site.origin});
     }
@@ -71,11 +72,11 @@ export class PairingIssuer {
       if(row!.revoked_at!==null||!row!.approved_at||!await this.activeOrganization(row!.organization_id))fail(410,'expired','The approval was revoked.');
       if(row!.grant_id)return this.exchangeRetry(row!.id,intent);
       if(row!.expires_at<=now())fail(410,'expired','The approval expired.');
-      const grantId=random(),credential=await this.credential(grantId,random(),envelope.identity,key!),cipher=await seal(credential,this.env.WEBMASTER_PAIRING_KEY,this.aad('exchange',row!.id));
+      const named=await this.signOn.exchange(row!.id,envelope.identity,key!);const grantId=random(),base=await this.credential(grantId,random(),envelope.identity,key!),credential={...base,...(named?{signOn:{version:1 as const,subjectId:named.subject_id,approved:!!named.local_user_id}}:{})},cipher=await seal(credential,this.env.WEBMASTER_PAIRING_KEY,this.aad('exchange',row!.id));
       const updated=this.env.DB.prepare("UPDATE webmaster_pairing_requests SET grant_id=?,exchange_hash=?,credential_cipher=?,receipt_expires_at=? WHERE installation_id=? AND site_id=? AND admin_origin=? AND id=? AND grant_id IS NULL AND revoked_at IS NULL AND expires_at>? AND EXISTS(SELECT 1 FROM webmaster_connections WHERE installation_id=? AND site_id=? AND admin_origin=? AND organization_id=? AND status='connected')").bind(grantId,intent,cipher,now()+600,...this.scope,row!.id,now(),...this.scope,row!.organization_id);
       const inserted=this.sql('INSERT INTO webmaster_reporting_grants(installation_id,site_id,admin_origin,id,organization_id,organization_name,consumer_json,key_json,token_hash,created_at) SELECT ?,?,?,?,?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM webmaster_pairing_requests WHERE installation_id=? AND site_id=? AND admin_origin=? AND id=? AND grant_id=?)',grantId,row!.organization_id,row!.organization_name,row!.consumer_json,row!.key_json,await hash(credential.token),now(),...this.scope,row!.id,grantId);
       const supersede=this.env.DB.prepare('UPDATE webmaster_reporting_grants SET revoked_at=?,revision=revision+1 WHERE installation_id=? AND site_id=? AND admin_origin=? AND id<>? AND consumer_json=? AND organization_id=? AND revoked_at IS NULL AND EXISTS(SELECT 1 FROM webmaster_reporting_grants WHERE installation_id=? AND site_id=? AND admin_origin=? AND id=?)').bind(now(),...this.scope,grantId,row!.consumer_json,row!.organization_id,...this.scope,grantId);
-      const changed=await this.env.DB.batch([updated,inserted,supersede]);if(!changed[0].meta.changes)return this.exchangeRetry(row!.id,intent);return Response.json(credential);
+      let changed;try{changed=await this.env.DB.batch([updated,inserted,supersede,...(named?.local_user_id?[this.signOn.grant(named,row!.id,grantId,envelope.identity,row!.organization_id)]:[])]);}catch(error){if(named?.local_user_id)fail(409,'conflict','The account approval changed or could not commit. Review or retry the request.');throw error;}if(!changed[0].meta.changes)return this.exchangeRetry(row!.id,intent);return Response.json(credential);
     }
     if(path==='/rotate'||path==='/revoke')return this.mutate(grant!,data,token,path);
     await this.allowed(grant!);
@@ -105,7 +106,7 @@ export class PairingIssuer {
     const url=new URL(request.url);
     if(request.method==='GET'&&path==='/approval'){
       const row=await this.request(url.searchParams.get('id')),connection=await this.sql('SELECT organization_id,status FROM webmaster_connections WHERE installation_id=? AND site_id=? AND admin_origin=?').first<{organization_id:string;status:string}>();
-      return Response.json({id:row.id,organizationName:row.organization_name,consumer:JSON.parse(row.consumer_json),issuer:identity(this.manifest),expiresAt:row.expires_at,status:row.revoked_at!==null?'revoked':row.expires_at<=now()?'expired':row.approved_at?'approved':'pending',scope:'analytics:read',createsRelationship:!connection} satisfies PairingRequestView);
+      return Response.json({id:row.id,organizationName:row.organization_name,consumer:JSON.parse(row.consumer_json),issuer:identity(this.manifest),expiresAt:row.expires_at,status:row.revoked_at!==null?'revoked':row.expires_at<=now()?'expired':row.approved_at?'approved':'pending',scope:'analytics:read',createsRelationship:!connection,signOn:await this.signOn.view(row.id)} satisfies PairingRequestView);
     }
     if(request.method==='GET'&&path==='/grants'){
       const rows=(await this.sql('SELECT * FROM webmaster_reporting_grants WHERE installation_id=? AND site_id=? AND admin_origin=? ORDER BY created_at DESC LIMIT 100').all<GrantRow>()).results;
@@ -116,14 +117,14 @@ export class PairingIssuer {
     if(path==='/revoke-grant'){
       strict(data,['grantId']);const grant=await this.grant(data.grantId);await this.env.DB.batch([this.env.DB.prepare('UPDATE webmaster_reporting_grants SET revoked_at=?,revision=revision+1 WHERE installation_id=? AND site_id=? AND admin_origin=? AND id=? AND revoked_at IS NULL').bind(now(),...this.scope,grant.id),this.env.DB.prepare('UPDATE webmaster_pairing_requests SET revoked_at=?,code_cipher=NULL,credential_cipher=NULL WHERE installation_id=? AND site_id=? AND admin_origin=? AND grant_id=?').bind(now(),...this.scope,grant.id)]);await this.audit(user!,'Revoked organization analytics reporting access');return Response.json({ok:true});
     }
-    strict(data,['requestId','approved']);if(data.approved!==true)fail(400,'invalid_request','Explicit analytics-only approval is required.');const row=await this.request(data.requestId);
+    strict(data,['requestId','approved','signOn']);if(data.approved!==true)fail(400,'invalid_request','Explicit analytics-only approval is required.');const row=await this.request(data.requestId);
     if(row.expires_at<=now()||row.revoked_at!==null)fail(410,'expired','This pairing request expired or was revoked.');
     const connection=await this.sql('SELECT organization_id,status FROM webmaster_connections WHERE installation_id=? AND site_id=? AND admin_origin=?').first<{organization_id:string;status:string}>();if(connection&&(connection.organization_id!==row.organization_id||connection.status!=='connected'))fail(409,'conflict','Review the existing webmaster relationship in Settings before approving.');
-    if(row.approved_at)return Response.json({ok:true});const code=random();
+    const decision=await this.signOn.decision(row.id,data.signOn,user!,!!row.approved_at);if(row.approved_at)return Response.json({ok:true});const code=random(),codeHash=await hash(code);
     const changed=await this.env.DB.batch([
       this.sql("INSERT INTO webmaster_connections(installation_id,site_id,admin_origin,organization_id,organization_name,billing_provider,status,revision,mutation_id) SELECT ?,?,?,?,?,0,'connected',1,? WHERE EXISTS(SELECT 1 FROM users WHERE id=? AND active=1 AND role='owner') AND EXISTS(SELECT 1 FROM webmaster_pairing_requests WHERE installation_id=? AND site_id=? AND admin_origin=? AND id=? AND revoked_at IS NULL AND expires_at>?) ON CONFLICT(installation_id,site_id,admin_origin) DO NOTHING",row.organization_id,row.organization_name,row.id,user!.id,...this.scope,row.id,now()),
-      this.env.DB.prepare("UPDATE webmaster_pairing_requests SET approved_at=?,code_hash=?,code_cipher=?,receipt_expires_at=? WHERE installation_id=? AND site_id=? AND admin_origin=? AND id=? AND approved_at IS NULL AND revoked_at IS NULL AND expires_at>? AND EXISTS(SELECT 1 FROM users WHERE id=? AND active=1 AND role='owner') AND EXISTS(SELECT 1 FROM webmaster_connections WHERE installation_id=? AND site_id=? AND admin_origin=? AND organization_id=? AND status='connected')").bind(now(),await hash(code),await seal(code,this.env.WEBMASTER_PAIRING_KEY,this.aad('code',row.id)),now()+600,...this.scope,row.id,now(),user!.id,...this.scope,row.organization_id)
-    ]);if(!changed[1].meta.changes)fail(409,'conflict','The owner or relationship changed. Reload the request.');await this.audit(user!,'Approved organization analytics-only reporting access');return Response.json({ok:true});
+      this.env.DB.prepare("UPDATE webmaster_pairing_requests SET approved_at=?,code_hash=?,code_cipher=?,receipt_expires_at=? WHERE installation_id=? AND site_id=? AND admin_origin=? AND id=? AND approved_at IS NULL AND revoked_at IS NULL AND expires_at>? AND EXISTS(SELECT 1 FROM users WHERE id=? AND active=1 AND role='owner') AND EXISTS(SELECT 1 FROM webmaster_connections WHERE installation_id=? AND site_id=? AND admin_origin=? AND organization_id=? AND status='connected')").bind(now(),codeHash,await seal(code,this.env.WEBMASTER_PAIRING_KEY,this.aad('code',row.id)),now()+600,...this.scope,row.id,now(),user!.id,...this.scope,row.organization_id),...(decision?[decision.statement(codeHash)]:[])
+    ]);if(!changed[1].meta.changes)fail(409,'conflict','The owner or relationship changed. Reload the request.');await this.audit(user!,data.signOn?.approved?'Approved organization reporting and existing-account named sign-in':'Approved organization analytics-only reporting access',row.organization_id,row.organization_name);return Response.json({ok:true});
   }
 }
 

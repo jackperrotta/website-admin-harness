@@ -1,0 +1,5 @@
+# Repeatable client connection
+
+Add website requests organization analytics/status reads and optional named sign-in as separate owner choices. A client owner reviews the signed webmaster identity and selects an existing active local account for sign-in; no email matching, account creation, role change or financial permission occurs. Issue the reporting credential and approved named mapping atomically, retaining existing reporting and SSO contracts for older clients. Individual human removal must not revoke organization reporting.
+
+Add explicit capability discovery, a client installation handoff file and a local plan/apply command. Installation preserves manifests, modules, backend identities, existing trust, billing and credentials; optional migrations and two new secrets remain deliberate installation actions. Runtime performs no provisioning. Test owner/Origin/scope/expiry/replay and atomic account revocation, reporting-only decisions, legacy clients, external packed consumption and real desktop/phone approval/sign-in/logout. Existing live clients and bindings are not migration targets for this feature work.

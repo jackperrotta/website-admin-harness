@@ -22,7 +22,8 @@
     "vitris:preview": "npm run build && node --experimental-strip-types scripts/vitris-preview.ts",
     "vitris:signin": "node --experimental-strip-types scripts/vitris-signin.ts",
     "billing:preview": "npm run build && node --experimental-strip-types scripts/billing-preview.ts",
-    "stripe:verify": "node --experimental-strip-types scripts/stripe-verify.ts"
+    "stripe:verify": "node --experimental-strip-types scripts/stripe-verify.ts",
+    "release:docs": "node --experimental-strip-types scripts/refresh-release-docs.ts"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260922.1",

@@ -54,3 +54,26 @@ Status and 14/30-day analytics are the only supported reads. No leads, financial
 Central pause excludes the source and stops new checks without revoking its grant. Disconnect pauses locally before attempting upstream revocation; an unconfirmed result remains paused and recoverable. Paired cache reads require a fresh issuer grant check; cache writes and final responses are fenced by connection revision. Previously displayed data is not remotely erased, but new reads cannot use revoked access.
 
 Rollback may restore the preceding deployment while retaining additive tables, trigger and keys. This disables new pairing routes; it does not reverse payments or delete legitimate changes. Restore a database backup only as a separately reviewed recovery action. Test issuer and consumer from the same packed contracts/runtime outside the workspace, owner/Origin/tenant failures, replay/expiry, wrong keys/audience, dropped responses, rotation, organization vs member revocation, in-flight/cache fencing, desktop/mobile, and existing billing before deployment.
+
+
+## Repeatable Add website setup (1.4.0)
+
+Add website discovers the existing client admin and its versioned `connectionSetup` capability. A compatible, configured client can accept reporting plus optional named sign-in in one owner review. Older clients remain reporting-only. The Vitris owner can download a **public** connection setup file containing its installation/admin identity, organization, named source subject and public signing key. Review those exact pins independently; the file contains no credentials and grants no access by itself.
+
+For an existing installation, run the matching packed CLI:
+
+```sh
+npx @tryvitris/website-admin-harness@1.4.0 webmaster-setup --dir EXISTING_ADMIN --from vitris-connection.json --plan
+# Review .vitris/webmaster-setup/plan.json, then:
+npx @tryvitris/website-admin-harness@1.4.0 webmaster-setup --dir EXISTING_ADMIN --from vitris-connection.json --apply
+```
+
+This prepares configuration, an original-manifest backup, private new-key inputs and copies of optional migrations. It performs no cloud calls, creates no account, and does not change roles, ownership, forms, backend identities or billing. Preserve `.vitris/` privately and copy new secrets into secure recovery storage. Existing pins cannot be overwritten; existing keys must not be replaced. Custom namespaced/vendored adapters require explicit adapter review instead of automatic apply.
+
+The installation agent must update the matching runtime/contracts and UI, back up the **owning** D1, inspect its migration ledger/schema, apply only missing 0011 core plus optional 0012, 0013 and **0014_connection_approval.sql**, install only missing pairing/SSO secrets, build/check, and explicitly deploy that client admin. Never run migrations against a shared backend or repeat already-applied migrations. Preserve every existing binding, password verifier and secret. A runtime request never performs this provisioning. After deployment, discover the site again in Add website.
+
+Combined request data includes optional `signOn:{version:1,subject:{id,email}}`, signed as part of the immutable reporting request. The subject, broker identity and public key must exactly match the reviewed client pin. The client owner separately approves analytics reporting and optionally chooses an existing active local account for sign-in; no email-based account matching or new account occurs. The selected account keeps its effective permissions. Leaving sign-in unchecked preserves any prior named grant and grants no new sign-in. The choice cannot change after approval; start a new request instead.
+
+Exchange commits reporting and the selected named mapping atomically. An account/owner deactivated before exchange aborts the transaction. Safe retry returns the same credential and `{signOn:{version:1,subjectId,approved}}` result, with no local-account details. Normal named sign-on and linked logout use the existing v1 SSO protocol. Organization reporting remains separate from human membership, named-grant revocation and billing. Rotation/revocation of the reporting token does not authorize or mutate the account's permissions. Disconnecting the whole webmaster organization invalidates both types of access; none of these actions cancels a subscription.
+
+Rollback keeps the additive table/trigger, existing records and all keys. The preceding runtime can continue ordinary reporting/sign-in and ignores the new capability; pending combined approvals should be restarted after an upgrade. Never restore a database backup, drop records or rotate keys merely to roll back code.

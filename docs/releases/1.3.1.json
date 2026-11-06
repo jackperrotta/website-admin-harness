@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "version": "1.3.1",
+  "packages": {
+    "runtime": {
+      "title": "Smoother sign-on and scrollable navigation",
+      "notesScope": "package",
+      "notes": [
+        "Made fixed desktop navigation scrollable on short windows and at browser zoom, preserving access to lower navigation and account controls.",
+        "Improved named sign-on loading screens, titles, fragment cleanup and in-app completion. Existing browser binding, permissions, live source-session checks and linked logout are unchanged. No migration or new secret is required."
+      ]
+    },
+    "contracts": {
+      "title": "Synchronized contracts version",
+      "notesScope": "package",
+      "notes": [
+        "Updated the synchronized package version to 1.3.1. The manifest, permissions and scheduling contract APIs are unchanged from 1.3.0."
+      ]
+    },
+    "initializer": {
+      "title": "Initialize with admin runtime 1.3.1",
+      "notesScope": "package",
+      "notes": [
+        "Updated the exact admin runtime dependency to 1.3.1. The initializer command and installation scaffolding are unchanged from 1.3.0."
+      ]
+    }
+  }
+}
