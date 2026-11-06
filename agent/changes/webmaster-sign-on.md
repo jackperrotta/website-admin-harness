@@ -1,0 +1,11 @@
+# Owner-only webmaster sign-on
+
+Implement client-approved human sign-on separately from organization reporting and billing. Initially only one explicitly configured broker subject (the Vitris owner) may start a launch. Bind each existing client account explicitly after client-owner approval; never create/promote accounts or infer identity from matching email. Preserve current local permissions and actor attribution.
+
+Use two browser hops, a client HttpOnly flow cookie, server-held PKCE, exact pinned audiences and one-use 60-second codes. Signed broker assertions establish client sessions linked to the original Vitris session. Every authenticated client request introspects that source session without positive caching, failing closed on outage/revocation; visible client UIs recheck promptly. Removing a person stops that person's sign-on without revoking organization analytics. Client/organization disconnect permanently revokes human grants. Keep billing unchanged.
+
+Add only optional scoped SQL migrations, public versioned contracts, runtime/SDK, client approval controls, Vitris Open site admin integration and focused hostile/browser/package acceptance. Run both npm run check commands and packed external consumption. This implementation does not publish packages, install production secrets, migrate databases or deploy clients as a side effect. Activation requires a reviewed per-installation diff and client owner approval.
+
+## Verification completed
+
+Final npm run check passed: publication privacy scan, build, strict typecheck and all 219 harness tests, including the exact packed external sign-on/linked-logout flow and existing website booking integration. The private Vitris consumer passed all 33 tests and its production builds, plus desktop/mobile Websites and billing acceptance. Full sign-on browser tests cover client-owner mapping, a second automatic launch with approved local permissions, and visible client sign-out after Vitris logout. Source, optional migration, public SDK declarations and matching 1.3.0 archives are ready for reviewed release/installation. No publication, remote migration, production secret/account change or deployment was performed for this candidate.

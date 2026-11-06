@@ -9,6 +9,7 @@ export * from './client-onboarding.ts';
 export * from './scheduling.ts';
 export * from './webmaster.ts';
 export * from './pairing.ts';
+export * from './signon.ts';
 export const contractVersion = 1;
 export const coreSections = ['overview', 'leads', 'analytics', 'settings', 'access', 'activity'] as const;
 export const permissions = ['leads:read', 'leads:write', 'analytics:read', 'settings:write', 'access:read', 'access:write', 'activity:read', 'tasks:read', 'tasks:write', ...schedulingPermissions, ...clientPortfolioPermissions, ...clientOnboardingPermissions, ...billingPermissions] as const;
@@ -21,6 +22,7 @@ export const roles: Record<Role, readonly Permission[]> = {
 };
 export function can(role: Role, permission: Permission) { return roles[role]?.includes(permission) ?? false; }
 export interface AdminManifest {
+  webmasterSignOn?: import('./signon.ts').SignOnConfiguration;
   reportingPairing?: import('./pairing.ts').PairingConfiguration;
   schemaVersion: 1;
   installationId: string;
@@ -166,11 +168,22 @@ export function parseManifest(value: unknown): AdminManifest {
     if(new Set(trustedWebmasters.map(p=>p.adminOrigin)).size!==trustedWebmasters.length)throw new Error('Duplicate trusted webmaster origin');
     reportingPairing={trustedWebmasters};
   }
+  let webmasterSignOn:AdminManifest['webmasterSignOn'];
+  if(v.webmasterSignOn!==undefined){
+    const c=object(v.webmasterSignOn);
+    if(c.mode==='broker')webmasterSignOn={mode:'broker'};
+    else if(c.mode==='client'){
+      const b=object(c.broker),k=object(c.publicKey),adminOrigin=origin(b.adminOrigin,'sign-on broker origin');
+      if(isLoopback(adminOrigin)&&!isLoopback(String(v.adminOrigin)))throw Error('A production client cannot trust a local sign-on broker');
+      if(k.kty!=='EC'||k.crv!=='P-256'||typeof k.x!=='string'||typeof k.y!=='string'||!/^[-\w]{43}$/.test(k.x)||!/^[-\w]{43}$/.test(k.y)||k.d!==undefined)throw Error('Pin the broker public P-256 key');
+      webmasterSignOn={mode:'client',broker:{installationId:id(b.installationId,'broker installation ID'),siteId:id(b.siteId,'broker site ID'),adminOrigin},subjectId:text(c.subjectId,'approved broker subject',100),organizationId:id(c.organizationId,'webmaster organization ID'),publicKey:{kty:'EC',crv:'P-256',x:k.x,y:k.y}};
+    }else throw Error('Unsupported webmaster sign-on mode');
+  }
   return {
     schemaVersion: 1, installationId: id(v.installationId, 'installation ID'),
     business: {name: text(business.name, 'business name'), initials: text(business.initials, 'initials', 3)},
     site: {id: id(site.id, 'site ID'), name: text(site.name, 'site name'), origin: origin(site.origin, 'website origin')},
-    adminOrigin: origin(v.adminOrigin, 'admin origin'), modules, ...(backend?{backend}:{}), ...(v.theme?{theme:v.theme as WebsiteTheme}:{}), ...(reportingPairing?{reportingPairing}:{}),
+    adminOrigin: origin(v.adminOrigin, 'admin origin'), modules, ...(backend?{backend}:{}), ...(v.theme?{theme:v.theme as WebsiteTheme}:{}), ...(reportingPairing?{reportingPairing}:{}), ...(webmasterSignOn?{webmasterSignOn}:{}),
   };
 }
 export function validateModules(manifest: AdminManifest, modules: ModuleDefinition[]) {

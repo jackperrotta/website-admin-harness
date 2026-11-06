@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.0 - 2026-11-06
+
+- Added opt-in named webmaster sign-on for one configured broker owner, client-owner mapping to existing approved accounts, browser-bound PKCE and one-use codes, pinned signatures and live source-session checks. Vitris sign-out blocks linked client sessions; individual sign-on revocation preserves organization reporting and billing. Includes an optional additive migration and explicit installation/key/recovery guidance.
+
 ## 1.2.0 - 2026-11-06
 
 - Added opt-in client-owner-approved analytics pairing with versioned contracts and a public server SDK, pinned installation signing keys, PKCE, short-lived approvals, hashed machine grants, encrypted retry receipts, rotation and revocation. A client-admin reporting proxy keeps original backend credentials private. Organization reporting survives individual membership removal and stops on organization disconnect. Includes optional additive migration `modules/webmaster/migrations/0012_reporting_pairing.sql`; explicit client trust, secrets and migration review are required. Billing stays independent.

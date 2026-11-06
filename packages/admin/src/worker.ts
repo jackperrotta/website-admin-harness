@@ -1,3 +1,5 @@
+import {SignOnService,validateWebmasterSignOn,type SignOnEnv} from './signon/service.ts';
+import {signOnBase} from '../../contracts/src/signon.ts';
 import {webmasterModule,webmasterUser,webmasterRoute,webmasterSchema,resolveTeam,WebmasterError} from './webmaster.ts';
 import {PairingIssuer} from './pairing/issuer.ts';
 import {PairingError,pairingBase} from './pairing/protocol.ts';
@@ -15,7 +17,7 @@ import {CalendarService} from './scheduling/calendars/service.ts';
 import {CalendarError, type CalendarEnv} from './scheduling/calendars/types.ts';
 
 interface EmailBinding {send(message: {to: string; from: string; subject: string; text: string}): Promise<unknown>}
-export interface AdminEnv extends HarnessEnv, CalendarEnv, BookingEnv, AccountEnv {
+export interface AdminEnv extends HarnessEnv, CalendarEnv, BookingEnv, AccountEnv, SignOnEnv {
   WEBMASTER_PAIRING_KEY?:string;WEBMASTER_PAIRING_HTTP?:Pick<Fetcher,'fetch'>;WEBMASTER_PAIRING_FIXTURE_MODE?:string;
   DB: D1Database; ASSETS: Pick<Fetcher, 'fetch'>; ASSET_STORE?: R2Bucket;
   MODE?: string; PASSWORD_LOGIN?: string; PASSWORD_PEPPER?: string; AUTH_EMAIL?: EmailBinding; AUTH_FROM?: string;
@@ -56,7 +58,7 @@ async function session(env: AdminEnv, request: Request, manifest: AdminManifest)
   const raw = request.headers.get('cookie')?.split(';').map(x => x.trim()).find(x => x.startsWith(`${name}=`))?.slice(name.length + 1);
   if (!raw || raw.length > 200) return null;
   const user=await env.DB.prepare('SELECT u.id,u.email,u.role FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.digest=? AND s.expires_at>? AND u.active=1').bind(await digest(raw), now()).first<User>();
-  return user?webmasterUser(env.DB,manifest,user):null;
+  if(!user)return null;const resolved=await webmasterUser(env.DB,manifest,user);return resolved&&await validateWebmasterSignOn(env,manifest,await digest(raw),resolved)?resolved:null;
 }
 async function startSession(env: AdminEnv, userId: string, manifest: AdminManifest, revision?: number) {
   const identity=await env.DB.prepare('SELECT id,email,role FROM users WHERE id=? AND active=1').bind(userId).first<User>();
@@ -100,10 +102,12 @@ export function createAdmin(input: unknown, options: {modules?: AdminModule[]} =
       if (isLoopback(manifest.adminOrigin) && !local(manifest, env)) throw new HttpError(503, 'Local installation requires explicit local mode');
       const bookingRoute = path.startsWith('/api/booking/v1/');
       const hook=hooks.find(h=>h.path===path);
+      const signOnRoute=path.startsWith(signOnBase+'/'),signOnMachine=['register','exchange','introspect'].some(action=>path===signOnBase+'/'+action);
       const pairingRoute=path.startsWith(pairingBase+'/'),pairingMachine=['request','poll','exchange','report','rotate','revoke'].some(action=>path===pairingBase+'/'+action);
-      if (!bookingRoute && !hook && !pairingMachine && !['GET','HEAD'].includes(request.method) && request.headers.get('origin') !== manifest.adminOrigin) throw new HttpError(403, 'Origin check failed');
+      if (!bookingRoute && !hook && !pairingMachine && !signOnMachine && !['GET','HEAD'].includes(request.method) && request.headers.get('origin') !== manifest.adminOrigin) throw new HttpError(403, 'Origin check failed');
       const calendarCallback = path.match(/^\/api\/scheduling\/oauth\/(google|microsoft)\/callback$/);
-      if(pairingRoute)response=await new PairingIssuer(env,manifest).handle(request,pairingMachine?null:await session(env,request,manifest));
+      if(signOnRoute)response=await new SignOnService(env,manifest).handle(request,signOnMachine?null:await session(env,request,manifest));
+      else if(pairingRoute)response=await new PairingIssuer(env,manifest).handle(request,pairingMachine?null:await session(env,request,manifest));
       else if(hook){if(!manifest.modules.includes(hook.moduleId))throw new HttpError(404,'Module is disabled');if(request.method!=='POST')throw new HttpError(405,'Method not allowed');response=await hook.handle({request,env,manifest,context});}
       else if (bookingRoute) response = await new PublicBooking(env, manifest).handle(request);
       else if (calendarCallback && request.method === 'GET') {
@@ -111,7 +115,7 @@ export function createAdmin(input: unknown, options: {modules?: AdminModule[]} =
         response = await new CalendarService(env, manifest).complete(request, calendarCallback[1] as 'google' | 'microsoft');
       }
       else if (!path.startsWith('/api/')) response = await env.ASSETS.fetch(request);
-      else response = await api(request, env, manifest, local(manifest, env) && !manifest.reportingPairing && !(options.modules || []).some(m => manifest.modules.includes(m.id) && m.disableLocalDemo), path, url, options.modules || []);
+      else response = await api(request, env, manifest, local(manifest, env) && !manifest.reportingPairing && !manifest.webmasterSignOn && !(options.modules || []).some(m => manifest.modules.includes(m.id) && m.disableLocalDemo), path, url, options.modules || []);
     } catch (error) {
       response = error instanceof PairingError || error instanceof WebmasterError || error instanceof LeadError || error instanceof AccountError || error instanceof HttpError || error instanceof HarnessError || error instanceof SchedulingError || error instanceof CalendarError ? json({error: error.message,...(error instanceof PairingError?{code:error.code}:{})}, error.status) : json({error: 'The admin service could not complete this request. Check its database and bindings.'}, 500);
     }

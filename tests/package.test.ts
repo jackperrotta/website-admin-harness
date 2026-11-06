@@ -13,6 +13,7 @@ import {stripePair} from './stripe-fixture.ts';
 import {accountFixture,syntheticPassword} from './accounts-fixture.ts';
 import {webmasterFixture,webmasterConfig} from './webmaster-fixture.ts';
 import {pairingFixture} from './pairing-fixture.ts';
+import {signOnFixture} from './signon-fixture.ts';
 import {assertSafeArchive} from '../scripts/publication-safety.ts';
 const npmCLI=process.env.npm_execpath;
 const npm=(args: string[],cwd: string)=>execFileSync(process.execPath,[npmCLI!,...args],{cwd,encoding:'utf8',stdio:['ignore','pipe','pipe']});
@@ -54,6 +55,7 @@ test('packed npm packages scaffold an external installation, agent kit, and safe
   assert.ok(paths.includes('dist/pages.js')&&paths.includes('dist/pages.d.ts')&&paths.includes('dist/account-mail.js')&&paths.includes('dist/account-mail.d.ts'));
   assert.ok(paths.includes('migrations/0009_account_lifecycle.sql')&&paths.includes('dist/accounts.d.ts')&&paths.includes('agent/refs/accounts.md'));
   assert.ok(paths.includes('migrations/0011_webmaster_connections.sql')&&paths.includes('dist/contracts/webmaster.d.ts')&&paths.includes('agent/refs/webmaster.md'));
+  assert.ok(paths.includes('dist/signon.js')&&paths.includes('dist/signon.d.ts')&&paths.includes('dist/contracts/signon.d.ts')&&paths.includes('agent/refs/webmaster-sign-on.md')&&paths.includes('modules/webmaster/migrations/0013_webmaster_signon.sql')&&!paths.includes('migrations/0013_webmaster_signon.sql'));
   assert.ok(paths.includes('dist/pairing.js')&&paths.includes('dist/pairing.d.ts')&&paths.includes('dist/contracts/pairing.d.ts')&&paths.includes('agent/refs/reporting-pairing.md'));
   assert.ok(paths.includes('modules/webmaster/migrations/0012_reporting_pairing.sql')&&!paths.includes('migrations/0012_reporting_pairing.sql'));
   assert.ok(contracts.files.some(file=>file.path==='dist/pairing.js')&&contracts.files.some(file=>file.path==='dist/pairing.d.ts'));
@@ -66,6 +68,8 @@ test('packed npm packages scaffold an external installation, agent kit, and safe
   assert.ok(paths.every(x=>!x.startsWith('dist/types/')&&!x.endsWith('.map')));
   const tool=join(root,'tool');await mkdir(tool);
   npm(['install','--ignore-scripts','--no-audit','--no-fund',join(root,runtime.filename),join(root,initializer.filename),join(root,contracts.filename)],tool);
+  const signOn=await signOnFixture(join(tool,'node_modules/@tryvitris/website-admin-harness'));
+  try{const flow=await signOn.handshake();assert.equal((await signOn.complete(flow)).status,200);const response=await signOn.approve(flow);assert.equal(response.status,200);const cookie=/vitris-admin-local=([^;, ]+)/.exec(response.headers.get('set-cookie')||'')![0];assert.equal((await signOn.client.request('/api/analytics',undefined,'',{cookie})).status,200);assert.equal((await signOn.broker.request('/api/auth/logout',{})).status,200);assert.equal((await signOn.client.request('/api/analytics',undefined,'',{cookie})).status,401);}finally{await signOn.dispose();}
   const pairing=await pairingFixture(join(tool,'node_modules/@tryvitris/website-admin-harness'));
   try{const {credential}=await pairing.paired();assert.equal((await pairing.client.call(pairing.manifest.adminOrigin,'report',{grantId:credential.grantId,operation:'analytics',days:14},credential.token)).data.rows[0].views,3);}finally{await pairing.app.dispose();}
   const webmaster=await webmasterFixture({runtimeRoot:join(tool,'node_modules/@tryvitris/website-admin-harness')});

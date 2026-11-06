@@ -20,3 +20,5 @@ Read `refs/webmaster.md` before enabling or changing a Managed by Webmaster rela
 Read `refs/leads.md` for lead follow-up, full-history search, installation scoping, compatible backend migrations and read-only connections.
 
 Read `refs/reporting-pairing.md` before enabling machine analytics pairing. It is separate from human membership and optional billing; trust each consumer installation explicitly.
+
+Read `refs/webmaster-sign-on.md` before enabling named cross-installation sign-in or linked logout. Human sign-on, organization reporting and billing have independent grants.
