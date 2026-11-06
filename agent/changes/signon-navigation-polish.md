@@ -1,0 +1,5 @@
+# Sign-on handoff and short-window navigation
+
+Keep the existing browser-bound, pinned-origin sign-on protocol, explicit account mapping, per-request broker checks and linked logout. Avoid changing its security-required cross-origin hops. Remove the redundant full-document reload after client completion/approval: fetch a fresh authenticated bootstrap, verify the returned user and enter Overview in the current app. Use one consistent handoff screen/title before and after bootstrap and remove fragment codes on initial app startup.
+
+Give the fixed desktop sidebar vertical overflow with nonshrinking contents, so all navigation and account actions remain reachable on short windows and at zoom. Preserve mobile horizontal navigation and account actions. Browser checks cover wheel/keyboard access to bottom actions, mobile layout, no extra completion document load, explicit approval, second automatic launch and visible linked logout. No schema, permission, credential, reporting or billing changes.

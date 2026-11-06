@@ -1,0 +1,5 @@
+/* Preserve access to navigation and account actions on short or zoomed windows. */
+@media(min-width:801px){
+  .sidebar{overflow-y:auto;overscroll-behavior-y:contain;scrollbar-gutter:stable;scroll-padding-block:18px}
+  .sidebar>*{flex-shrink:0}
+}

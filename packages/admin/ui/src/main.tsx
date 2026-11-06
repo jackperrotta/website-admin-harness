@@ -1,4 +1,4 @@
-import {SignOnScreen,SignOnGrants} from './signon';
+import {SignOnScreen,SignOnGrants,SignOnProgress} from './signon';
 import {PairingApproval,ReportingGrants} from './pairing';
 import {WebmasterPanel} from './webmaster';
 import {AccountScreen,AccountSecurity,TeamAccess} from './accounts';
@@ -8,6 +8,7 @@ import './styles.css';
 import './analytics-dashboard.css';
 import './website-theme.css';
 import './typography.css';
+import './sidebar-scroll.css';
 import {LeadsWorkspace} from './leads';
 import {AnalyticsDashboard} from './analytics-dashboard';
 import {applyWebsiteTheme} from './theme';
@@ -62,19 +63,20 @@ function App() {
   const readAccountToken=()=>{const token=new URLSearchParams(location.hash.slice(1)).get('token');history.replaceState(null,'',location.pathname);return token;};
   const [accountLink,setAccountLink]=useState(()=>({token:location.pathname.startsWith('/account/')?readAccountToken():null,version:0}));
   const [page,setPage] = useState(location.hash.slice(1).split('?')[0] || 'overview');
-  const [moduleQuery,setModuleQuery] = useState(location.hash.split('?')[1] || '');
+  const [moduleQuery,setModuleQuery] = useState(()=>{const query=location.hash.split('?')[1]||'',route=location.hash.slice(1).split('?')[0];if(['webmaster-sso','webmaster-sso-authorize'].includes(route)&&!new URLSearchParams(query).has('approve'))history.replaceState(null,'','/#'+route);return query;});
   const readAuthLink = () => {const params = new URLSearchParams(location.hash.slice(1)); const token = params.get('token'), next = params.get('next'); history.replaceState(null,'','/auth'); return {token, next:next && ['client-portfolio','client-onboarding'].includes(next) ? next : 'overview'};};
   const [authLink,setAuthLink] = useState(() => location.pathname === '/auth' ? readAuthLink() : {token:null,next:'overview'});
   const refresh = () => api<BootstrapResponse>('bootstrap').then(setBoot).catch((e: unknown)=>setError(errorMessage(e)));
   useEffect(()=>{refresh(); const listener=(event:Event)=>{setModuleQuery(location.hash.split('?')[1] || '');if(location.pathname === '/auth' && new URLSearchParams(location.hash.slice(1)).has('token'))setAuthLink(readAuthLink());else if(location.pathname.startsWith('/account/')){if(event.type==='hashchange'&&!location.hash)return;const token=readAccountToken();setAccountLink(previous=>({token,version:previous.version+1}));}else if(event.type==='hashchange'||event.type==='popstate')setPage(location.hash.slice(1).split('?')[0]||'overview');}; addEventListener('hashchange',listener);addEventListener('popstate',listener); return ()=>{removeEventListener('hashchange',listener);removeEventListener('popstate',listener);};},[]);
-  useEffect(()=>{if(boot) document.title=`${labels[page]||'Admin'} · ${boot.manifest.business.name}`;},[boot,page,moduleQuery]);
+  useEffect(()=>{if(['webmaster-sso','webmaster-sso-authorize'].includes(page))document.title='Opening client admin · Vitris';else if(boot)document.title=`${labels[page]||'Admin'} · ${boot.manifest.business.name}`;},[boot,page,moduleQuery]);
   useEffect(()=>{if(boot)applyWebsiteTheme(document.documentElement,boot.theme||boot.manifest.theme);},[boot]);
   useEffect(()=>{if(boot?.manifest.webmasterSignOn?.mode!=='client'||!boot.user)return;let disposed=false;const check=()=>{if(document.visibilityState==='hidden')return;void api<BootstrapResponse>('bootstrap').then(value=>{if(!disposed)setBoot(value);}).catch(()=>{if(!disposed)setBoot(previous=>previous?{...previous,user:null}:previous);});};const timer=setInterval(check,5000);addEventListener('focus',check);document.addEventListener('visibilitychange',check);return()=>{disposed=true;clearInterval(timer);removeEventListener('focus',check);document.removeEventListener('visibilitychange',check);};},[boot?.user?.id,boot?.manifest.webmasterSignOn?.mode]);
-  if (!boot) return <main className="loading"><h1>Website admin</h1><p role="status">{error || 'Connecting to your installation…'}</p></main>;
+  const completeSignOn=async()=>{const value=await api<BootstrapResponse>('bootstrap');if(!value.user)throw Error('Your sign-in could not be confirmed. Open the client admin from Vitris again.');history.replaceState(null,'','/#overview');setBoot(value);setModuleQuery('');setPage('overview');};
+  if (!boot) return ['webmaster-sso','webmaster-sso-authorize'].includes(page)?<SignOnProgress>{error||undefined}</SignOnProgress>:<main className="loading"><h1>Website admin</h1><p role="status">{error || 'Connecting to your installation…'}</p></main>;
   if(location.pathname === '/prospect' || location.pathname === '/prospect/activate')return <React.Suspense fallback={<p role="status">Opening your client workspace…</p>}><ProspectExperience token={prospectToken}/></React.Suspense>;
   if(location.pathname.startsWith('/account/'))return <AccountScreen key={accountLink.version} boot={boot} token={accountLink.token}/>;
-  if(boot.manifest.webmasterSignOn?.mode==='client'&&page==='webmaster-sso'&&(!new URLSearchParams(moduleQuery).has('approve')||boot.user))return <SignOnScreen key={moduleQuery} boot={boot} query={moduleQuery}/>;
-  if(boot.manifest.webmasterSignOn?.mode==='broker'&&page==='webmaster-sso-authorize'&&boot.user)return <SignOnScreen boot={boot} query={moduleQuery} authorize/>;
+  if(boot.manifest.webmasterSignOn?.mode==='client'&&page==='webmaster-sso'&&(!new URLSearchParams(moduleQuery).has('approve')||boot.user))return <SignOnScreen key={moduleQuery} boot={boot} query={moduleQuery} onSignedIn={completeSignOn}/>;
+  if(boot.manifest.webmasterSignOn?.mode==='broker'&&page==='webmaster-sso-authorize'&&boot.user)return <SignOnScreen boot={boot} query={moduleQuery} authorize onSignedIn={completeSignOn}/>;
   if (!boot.user) return <Login boot={boot} refresh={refresh} authToken={authLink.token} destination={authLink.next} confirmed={()=>setAuthLink({token:null,next:'overview'})}/>;
   const allowed = ['overview',...(boot.manifest.reportingPairing&&boot.webmasterEnabled?['webmaster-pairing']:[]),...boot.capabilities,...boot.modules.map((m)=>m.id)];
   const current = allowed.includes(page) ? page : 'overview';
@@ -149,7 +151,7 @@ function Page({page,boot}:{page:string;boot:BootstrapResponse}) {
     {data?.kind==='settings'&&boot.user?.role==='owner'&&!boot.user.webmaster&&boot.manifest.webmasterSignOn?.mode==='client'&&<SignOnGrants/>}
     {data?.kind==='access'&&boot.accountAuth?.enabled&&<TeamAccess value={data.value} reload={async()=>setData({kind:"access",value:await api<AccessResponse>("access")})}/>}
     {data?.kind==='access'&&!boot.accountAuth?.enabled&&<><section className="panel table-wrap"><table><thead><tr><th>Account</th><th>Role</th><th>Access</th></tr></thead><tbody>{data.value.rows.map((row)=><tr key={row.id}><td>{row.email}</td><td><span className="badge">{row.role}</span></td><td>{row.active?'Active':'Revoked'}</td></tr>)}</tbody></table></section><p className="helper">This alpha lists provisioned accounts. Owner bootstrap is performed by the installation CLI. Invitation and transfer controls are planned.</p></>}
-    {data?.kind==='activity'&&<section className="panel">{data.value.rows.length?data.value.rows.map((row)=><article className="activity-row" key={row.id}><span className="activity-marker"/><div><strong>{row.action}</strong><p>{row.actor}{row.organization_name&&<> � {row.organization_name}</>}</p></div><time>{row.created_at} UTC</time></article>):<Empty title="Your activity starts here." text="Changes to leads, settings, and work queue tasks will appear here."/>}</section>}
+    {data?.kind==='activity'&&<section className="panel">{data.value.rows.length?data.value.rows.map((row)=><article className="activity-row" key={row.id}><span className="activity-marker"/><div><strong>{row.action}</strong><p>{row.actor}{row.organization_name&&<> · {row.organization_name}</>}</p></div><time>{row.created_at} UTC</time></article>):<Empty title="Your activity starts here." text="Changes to leads, settings, and work queue tasks will appear here."/>}</section>}
     {data?.kind==='work-queue'&&<section className="panel form-panel"><div className="panel-heading"><div><h2>Follow-up work</h2><p>Installed module · work-queue v1</p></div><span className="small-tag">BUSINESS TOOL</span></div>{boot.user&&userCan(boot.user,'tasks:write')&&<form className="task-form" onSubmit={async e=>{e.preventDefault();const form=e.currentTarget;const title=new FormData(form).get('title');if(await mutate('modules/work-queue',{title}))form.reset();}}><label className="sr-only" htmlFor="task">New task</label><input id="task" name="title" required maxLength={180} placeholder="What needs to happen next?"/><button className="primary" disabled={busy}>Add task</button></form>}{data.value.rows.length?data.value.rows.map((row)=><label className={`task-row ${row.done?'done':''}`} key={row.id}><input type="checkbox" checked={!!row.done} disabled={busy||!boot.user||!userCan(boot.user,'tasks:write')} onChange={e=>mutate('modules/work-queue/status',{id:row.id,done:e.target.checked})}/><span>{row.title}</span><small>{row.done?'Complete':'To do'}</small></label>):<Empty title="A clear queue." text="Add your first follow-up task above."/>}</section>}
     {data?.kind==='module'&&customModule&&<section className="panel form-panel"><h2>{customModule.label}</h2><p>{customModule.description}</p>{Array.isArray(data.value.rows)&&data.value.rows.length?<ul>{data.value.rows.map((row,i)=><li key={row.id||i}>{String(row.title||row.name||row.id||'Record')}</li>)}</ul>:<Empty title="Ready for your business records." text={data.value.message||'This module is installed. Your agent can extend its data and interface.'}/>}</section>}
   </>;

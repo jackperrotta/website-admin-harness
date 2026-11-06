@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.3.1 - 2026-11-06
+
+- Made the fixed desktop navigation scrollable on short windows and at browser zoom, keeping bottom navigation and account actions reachable.
+- Smoothed the named sign-on handoff with consistent loading screens and titles, earlier fragment cleanup, and in-app completion instead of an extra full-page reload. The existing cross-origin browser binding, permissions, live session checks and linked logout are unchanged. No migrations or new secrets.
+
 ## 1.3.0 - 2026-11-06
 
 - Added opt-in named webmaster sign-on for one configured broker owner, client-owner mapping to existing approved accounts, browser-bound PKCE and one-use codes, pinned signatures and live source-session checks. Vitris sign-out blocks linked client sessions; individual sign-on revocation preserves organization reporting and billing. Includes an optional additive migration and explicit installation/key/recovery guidance.
@@ -8,7 +13,7 @@
 
 - Added opt-in client-owner-approved analytics pairing with versioned contracts and a public server SDK, pinned installation signing keys, PKCE, short-lived approvals, hashed machine grants, encrypted retry receipts, rotation and revocation. A client-admin reporting proxy keeps original backend credentials private. Organization reporting survives individual membership removal and stops on organization disconnect. Includes optional additive migration `modules/webmaster/migrations/0012_reporting_pairing.sql`; explicit client trust, secrets and migration review are required. Billing stays independent.
 
-## 1.1.0 — 2026-11-04
+## 1.1.0 - 2026-11-04
 
 - Added an opt-in Managed by Webmaster connection in Settings, with owner-approved operational grants, optional lead access and billing-provider identification, persistent revocation and person/organization activity attribution. Management-only sites need no billing integration. Disconnecting access preserves independently configured client billing and existing subscriptions. Includes additive migration `0011_webmaster_connections.sql`; installations require an explicit module and migration review.
 

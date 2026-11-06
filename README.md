@@ -56,7 +56,7 @@ Pages and Media editing, arbitrary HTML editing and a page builder are outside s
 
 ## Packages and installation
 
-The stable release is `1.3.0`, distributed under the `latest` tag. Requires Node.js 24 or newer.
+The stable release is `1.3.1`, distributed under the `latest` tag. Requires Node.js 24 or newer.
 
 - `@tryvitris/website-admin-harness`: compiled Worker runtime, UI, migrations, CLI and agent kit.
 - `@tryvitris/create-website-admin-harness`: installation initializer using the runtime CLI.

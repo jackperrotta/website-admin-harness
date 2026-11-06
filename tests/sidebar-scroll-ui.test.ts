@@ -1,0 +1,9 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {mkdir} from 'node:fs/promises';import {chromium} from 'playwright';import {createSchedulingBrowserFixture} from './scheduling-browser-fixture.ts';
+test('short desktop windows keep bottom navigation and sign-out reachable by wheel and keyboard',{timeout:60000},async t=>{
+ const f=await createSchedulingBrowserFixture({modules:['scheduling','work-queue']});t.after(()=>f.app.dispose());const browser=await chromium.launch({headless:true});t.after(()=>browser.close());await mkdir('artifacts/sidebar-scroll',{recursive:true});
+ for(const viewport of [{width:1440,height:520},{width:900,height:360}]){
+ const context=await browser.newContext({viewport});try{await context.addCookies([{name:'vitris-admin-local',value:f.sessions.get('owner')!,url:f.origin}]);const page=await context.newPage();await page.goto(f.origin);const rail=page.locator('.sidebar'),signOut=page.getByRole('button',{name:'Sign out',exact:true});await signOut.waitFor();assert.ok(await rail.evaluate(el=>el.scrollHeight>el.clientHeight));
+ await rail.hover();await page.mouse.wheel(0,2000);await page.waitForFunction(()=>document.querySelector('.sidebar')!.scrollTop>0);await signOut.click({trial:true});assert.equal(await page.evaluate(()=>scrollY),0,'wheel stays within the rail');
+ await rail.evaluate(el=>{el.scrollTop=0;});const lastLink=rail.getByRole('link').last();await lastLink.focus();await page.keyboard.press('Tab');assert.equal(await signOut.evaluate(el=>el===document.activeElement),true);const box=await signOut.boundingBox();assert.ok(box&&box.y>=0&&box.y+box.height<=viewport.height,'keyboard focus scrolls the bottom action into view');assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await page.screenshot({path:'artifacts/sidebar-scroll/'+viewport.width+'x'+viewport.height+'.png'});
+ }finally{await context.close();}}
+});
