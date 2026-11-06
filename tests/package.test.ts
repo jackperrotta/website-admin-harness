@@ -12,6 +12,7 @@ import {createBillingPair} from './billing-fixture.ts';
 import {stripePair} from './stripe-fixture.ts';
 import {accountFixture,syntheticPassword} from './accounts-fixture.ts';
 import {webmasterFixture,webmasterConfig} from './webmaster-fixture.ts';
+import {pairingFixture} from './pairing-fixture.ts';
 import {assertSafeArchive} from '../scripts/publication-safety.ts';
 const npmCLI=process.env.npm_execpath;
 const npm=(args: string[],cwd: string)=>execFileSync(process.execPath,[npmCLI!,...args],{cwd,encoding:'utf8',stdio:['ignore','pipe','pipe']});
@@ -53,6 +54,9 @@ test('packed npm packages scaffold an external installation, agent kit, and safe
   assert.ok(paths.includes('dist/pages.js')&&paths.includes('dist/pages.d.ts')&&paths.includes('dist/account-mail.js')&&paths.includes('dist/account-mail.d.ts'));
   assert.ok(paths.includes('migrations/0009_account_lifecycle.sql')&&paths.includes('dist/accounts.d.ts')&&paths.includes('agent/refs/accounts.md'));
   assert.ok(paths.includes('migrations/0011_webmaster_connections.sql')&&paths.includes('dist/contracts/webmaster.d.ts')&&paths.includes('agent/refs/webmaster.md'));
+  assert.ok(paths.includes('dist/pairing.js')&&paths.includes('dist/pairing.d.ts')&&paths.includes('dist/contracts/pairing.d.ts')&&paths.includes('agent/refs/reporting-pairing.md'));
+  assert.ok(paths.includes('modules/webmaster/migrations/0012_reporting_pairing.sql')&&!paths.includes('migrations/0012_reporting_pairing.sql'));
+  assert.ok(contracts.files.some(file=>file.path==='dist/pairing.js')&&contracts.files.some(file=>file.path==='dist/pairing.d.ts'));
   assert.ok(paths.includes('migrations/0007_customer_notifications.sql') && paths.includes('agent/refs/customer-notifications.md'));
   assert.ok(paths.includes('migrations/0006_public_booking.sql') && paths.includes('dist/booking.d.ts') && paths.includes('agent/refs/public-booking.md'));
   assert.ok(paths.includes('migrations/0005_calendar_sync.sql') && paths.includes('dist/calendar.d.ts') && paths.includes('agent/refs/calendar-sync.md'));
@@ -62,6 +66,8 @@ test('packed npm packages scaffold an external installation, agent kit, and safe
   assert.ok(paths.every(x=>!x.startsWith('dist/types/')&&!x.endsWith('.map')));
   const tool=join(root,'tool');await mkdir(tool);
   npm(['install','--ignore-scripts','--no-audit','--no-fund',join(root,runtime.filename),join(root,initializer.filename),join(root,contracts.filename)],tool);
+  const pairing=await pairingFixture(join(tool,'node_modules/@tryvitris/website-admin-harness'));
+  try{const {credential}=await pairing.paired();assert.equal((await pairing.client.call(pairing.manifest.adminOrigin,'report',{grantId:credential.grantId,operation:'analytics',days:14},credential.token)).data.rows[0].views,3);}finally{await pairing.app.dispose();}
   const webmaster=await webmasterFixture({runtimeRoot:join(tool,'node_modules/@tryvitris/website-admin-harness')});
   try{assert.equal((await webmaster.request(undefined,webmasterConfig)).status,200);assert.equal((await webmaster.view()).connection?.billingProvider,false);assert.equal((await webmaster.request('/api/analytics',undefined,'editor')).status,200);assert.equal((await webmaster.request('/api/leads',undefined,'editor')).status,403);assert.equal((await webmaster.request('/api/modules/webmaster/disconnect',{revision:1,acknowledgeSubscription:true})).status,200);assert.equal((await webmaster.request('/api/analytics',undefined,'editor')).status,401);}finally{await webmaster.app.dispose();}
   execFileSync(process.execPath,['--input-type=module','-e',"import assert from 'node:assert/strict';import {webmasterScopes,validWebmasterScopes,userCan} from '@tryvitris/website-admin-contracts';assert.ok(webmasterScopes.includes('analytics:read'));assert.equal(validWebmasterScopes(['account-billing:manage']),false);assert.equal(userCan({id:'owner',email:'owner@example.test',role:'owner'},'access:write'),true);"],{cwd:tool,encoding:'utf8'});

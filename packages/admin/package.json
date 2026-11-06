@@ -1,6 +1,6 @@
 {
   "name": "@tryvitris/website-admin-harness",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "type": "module",
   "license": "MIT",
   "description": "Cloudflare business admin runtime and agent kit",
@@ -36,6 +36,10 @@
     "./account-mail": {
       "types": "./dist/account-mail.d.ts",
       "default": "./dist/account-mail.js"
+    },
+    "./pairing": {
+      "types": "./dist/pairing.d.ts",
+      "default": "./dist/pairing.js"
     }
   },
   "bin": {
@@ -68,7 +72,9 @@
     "dist/pages.js",
     "dist/pages.d.ts",
     "dist/account-mail.js",
-    "dist/account-mail.d.ts"
+    "dist/account-mail.d.ts",
+    "dist/pairing.js",
+    "dist/pairing.d.ts"
   ],
   "dependencies": {
     "react": "^19.0.0",

@@ -56,7 +56,7 @@ Pages and Media editing, arbitrary HTML editing and a page builder are outside s
 
 ## Packages and installation
 
-The stable release is `1.1.0`, distributed under the `latest` tag. Requires Node.js 24 or newer.
+The stable release is `1.2.0`, distributed under the `latest` tag. Requires Node.js 24 or newer.
 
 - `@tryvitris/website-admin-harness`: compiled Worker runtime, UI, migrations, CLI and agent kit.
 - `@tryvitris/create-website-admin-harness`: installation initializer using the runtime CLI.
@@ -122,3 +122,5 @@ Calendar synchronization source and local preview: see [setup and operations](pa
 Standard website guest bookings are opt-in; read [setup and verification](packages/admin/agent/refs/public-booking.md) before enabling them.
 
 Customer email and private cancellation/rescheduling link setup: [reference](packages/admin/agent/refs/customer-notifications.md).
+
+Version 1.2.0 includes client-approved organization analytics pairing. See [the pairing installation and protocol guide](packages/admin/agent/refs/reporting-pairing.md). It is opt-in and does not enable machine access or billing on existing installations.

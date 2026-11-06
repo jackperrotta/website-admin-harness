@@ -38,3 +38,7 @@ Disconnecting management access, disabling the module or removing a billing gran
 Managed operations store the person's ID/email and a snapshot of the responsible webmaster organization in Activity. Later renames and disconnects do not rewrite prior attribution. Core actions with new attribution are scoped to the owning installation/site/origin; older owning-database activity remains readable. Keep each installation's database separate as usual.
 
 Run `npm run check`, exercise both enabled/disabled states and consume packed packages outside the workspace. Test no-billing and separately paired billing variants. Review membership restrictions, migration effects and backup/rollback before deployment. Keep restriction rows. Before reverting to a runtime predating this access model, deactivate managed users and revoke their sessions/links; an older runtime cannot enforce the new restrictions. A code or database rollback does not reverse payments or cancel subscriptions. No installation is deployed or remotely migrated by updating this kit.
+
+## Optional organization reporting
+
+Version 1.2.0 supports explicit client-owner-approved analytics pairing through a reporting proxy. Follow `refs/reporting-pairing.md` for its optional migration, trusted installation configuration, secrets, wire contract and recovery. This organization machine grant survives removal of a human member. Disconnecting/changing the organization or revoking the reporting grant invalidates it permanently; reconnecting requires fresh pairing. Billing stays separate.

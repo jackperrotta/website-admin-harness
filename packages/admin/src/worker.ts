@@ -1,4 +1,6 @@
 import {webmasterModule,webmasterUser,webmasterRoute,webmasterSchema,resolveTeam,WebmasterError} from './webmaster.ts';
+import {PairingIssuer} from './pairing/issuer.ts';
+import {PairingError,pairingBase} from './pairing/protocol.ts';
 import {AccountService,AccountError,type AccountEnv} from './accounts.ts';
 import {LeadError, listLeads, saveFollowUp, followUpInput, followUpsAvailable} from './leads.ts';
 import {NotificationService} from './scheduling/notifications.ts';
@@ -14,6 +16,7 @@ import {CalendarError, type CalendarEnv} from './scheduling/calendars/types.ts';
 
 interface EmailBinding {send(message: {to: string; from: string; subject: string; text: string}): Promise<unknown>}
 export interface AdminEnv extends HarnessEnv, CalendarEnv, BookingEnv, AccountEnv {
+  WEBMASTER_PAIRING_KEY?:string;WEBMASTER_PAIRING_HTTP?:Pick<Fetcher,'fetch'>;WEBMASTER_PAIRING_FIXTURE_MODE?:string;
   DB: D1Database; ASSETS: Pick<Fetcher, 'fetch'>; ASSET_STORE?: R2Bucket;
   MODE?: string; PASSWORD_LOGIN?: string; PASSWORD_PEPPER?: string; AUTH_EMAIL?: EmailBinding; AUTH_FROM?: string;
 }
@@ -97,18 +100,20 @@ export function createAdmin(input: unknown, options: {modules?: AdminModule[]} =
       if (isLoopback(manifest.adminOrigin) && !local(manifest, env)) throw new HttpError(503, 'Local installation requires explicit local mode');
       const bookingRoute = path.startsWith('/api/booking/v1/');
       const hook=hooks.find(h=>h.path===path);
-      if (!bookingRoute && !hook && !['GET','HEAD'].includes(request.method) && request.headers.get('origin') !== manifest.adminOrigin) throw new HttpError(403, 'Origin check failed');
+      const pairingRoute=path.startsWith(pairingBase+'/'),pairingMachine=['request','poll','exchange','report','rotate','revoke'].some(action=>path===pairingBase+'/'+action);
+      if (!bookingRoute && !hook && !pairingMachine && !['GET','HEAD'].includes(request.method) && request.headers.get('origin') !== manifest.adminOrigin) throw new HttpError(403, 'Origin check failed');
       const calendarCallback = path.match(/^\/api\/scheduling\/oauth\/(google|microsoft)\/callback$/);
-      if(hook){if(!manifest.modules.includes(hook.moduleId))throw new HttpError(404,'Module is disabled');if(request.method!=='POST')throw new HttpError(405,'Method not allowed');response=await hook.handle({request,env,manifest,context});}
+      if(pairingRoute)response=await new PairingIssuer(env,manifest).handle(request,pairingMachine?null:await session(env,request,manifest));
+      else if(hook){if(!manifest.modules.includes(hook.moduleId))throw new HttpError(404,'Module is disabled');if(request.method!=='POST')throw new HttpError(405,'Method not allowed');response=await hook.handle({request,env,manifest,context});}
       else if (bookingRoute) response = await new PublicBooking(env, manifest).handle(request);
       else if (calendarCallback && request.method === 'GET') {
         if (!manifest.modules.includes('scheduling')) throw new HttpError(404,'Module is disabled');
         response = await new CalendarService(env, manifest).complete(request, calendarCallback[1] as 'google' | 'microsoft');
       }
       else if (!path.startsWith('/api/')) response = await env.ASSETS.fetch(request);
-      else response = await api(request, env, manifest, local(manifest, env) && !(options.modules || []).some(m => manifest.modules.includes(m.id) && m.disableLocalDemo), path, url, options.modules || []);
+      else response = await api(request, env, manifest, local(manifest, env) && !manifest.reportingPairing && !(options.modules || []).some(m => manifest.modules.includes(m.id) && m.disableLocalDemo), path, url, options.modules || []);
     } catch (error) {
-      response = error instanceof WebmasterError || error instanceof LeadError || error instanceof AccountError || error instanceof HttpError || error instanceof HarnessError || error instanceof SchedulingError || error instanceof CalendarError ? json({error: error.message}, error.status) : json({error: 'The admin service could not complete this request. Check its database and bindings.'}, 500);
+      response = error instanceof PairingError || error instanceof WebmasterError || error instanceof LeadError || error instanceof AccountError || error instanceof HttpError || error instanceof HarnessError || error instanceof SchedulingError || error instanceof CalendarError ? json({error: error.message,...(error instanceof PairingError?{code:error.code}:{})}, error.status) : json({error: 'The admin service could not complete this request. Check its database and bindings.'}, 500);
     }
     if(context&&request.method==='POST'&&response.ok&&/^\/api\/(auth|access\/invitations)/.test(new URL(request.url).pathname))context.waitUntil(new AccountService(env,manifest).tick().catch(()=>{}));
     const headers = new Headers(response.headers);

@@ -8,6 +8,7 @@ export * from './client-portfolio.ts';
 export * from './client-onboarding.ts';
 export * from './scheduling.ts';
 export * from './webmaster.ts';
+export * from './pairing.ts';
 export const contractVersion = 1;
 export const coreSections = ['overview', 'leads', 'analytics', 'settings', 'access', 'activity'] as const;
 export const permissions = ['leads:read', 'leads:write', 'analytics:read', 'settings:write', 'access:read', 'access:write', 'activity:read', 'tasks:read', 'tasks:write', ...schedulingPermissions, ...clientPortfolioPermissions, ...clientOnboardingPermissions, ...billingPermissions] as const;
@@ -20,6 +21,7 @@ export const roles: Record<Role, readonly Permission[]> = {
 };
 export function can(role: Role, permission: Permission) { return roles[role]?.includes(permission) ?? false; }
 export interface AdminManifest {
+  reportingPairing?: import('./pairing.ts').PairingConfiguration;
   schemaVersion: 1;
   installationId: string;
   business: {name: string; initials: string};
@@ -156,11 +158,19 @@ export function parseManifest(value: unknown): AdminManifest {
     backend={provider:'vitris-harness',origin:origin(b.origin,'backend origin'),tenantId};
     if(isLoopback(backend.origin)&&!isLoopback(String(v.adminOrigin)))throw new Error('Production admin cannot connect to a local backend');
   }
+  let reportingPairing:AdminManifest['reportingPairing'];
+  if(v.reportingPairing!==undefined){
+    const config=object(v.reportingPairing);
+    if(!Array.isArray(config.trustedWebmasters)||config.trustedWebmasters.length<1||config.trustedWebmasters.length>10)throw new Error('Configure trusted webmaster installations explicitly');
+    const trustedWebmasters=config.trustedWebmasters.map(raw=>{const p=object(raw),adminOrigin=origin(p.adminOrigin,'trusted webmaster origin');if(isLoopback(adminOrigin)&&!isLoopback(String(v.adminOrigin)))throw new Error('A production issuer cannot trust a local webmaster');return {installationId:id(p.installationId,'webmaster installation ID'),siteId:id(p.siteId,'webmaster site ID'),adminOrigin,organizationId:id(p.organizationId,'webmaster organization ID'),organizationName:text(p.organizationName,'webmaster organization name')};});
+    if(new Set(trustedWebmasters.map(p=>p.adminOrigin)).size!==trustedWebmasters.length)throw new Error('Duplicate trusted webmaster origin');
+    reportingPairing={trustedWebmasters};
+  }
   return {
     schemaVersion: 1, installationId: id(v.installationId, 'installation ID'),
     business: {name: text(business.name, 'business name'), initials: text(business.initials, 'initials', 3)},
     site: {id: id(site.id, 'site ID'), name: text(site.name, 'site name'), origin: origin(site.origin, 'website origin')},
-    adminOrigin: origin(v.adminOrigin, 'admin origin'), modules, ...(backend?{backend}:{}), ...(v.theme?{theme:v.theme as WebsiteTheme}:{}),
+    adminOrigin: origin(v.adminOrigin, 'admin origin'), modules, ...(backend?{backend}:{}), ...(v.theme?{theme:v.theme as WebsiteTheme}:{}), ...(reportingPairing?{reportingPairing}:{}),
   };
 }
 export function validateModules(manifest: AdminManifest, modules: ModuleDefinition[]) {

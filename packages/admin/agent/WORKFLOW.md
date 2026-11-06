@@ -18,3 +18,5 @@ Read `refs/harness.md` before changing backend connections or data adapters. A c
 Read `refs/webmaster.md` before enabling or changing a Managed by Webmaster relationship, its scoped accounts, revocation or optional client billing. Management and billing remain independent.
 
 Read `refs/leads.md` for lead follow-up, full-history search, installation scoping, compatible backend migrations and read-only connections.
+
+Read `refs/reporting-pairing.md` before enabling machine analytics pairing. It is separate from human membership and optional billing; trust each consumer installation explicitly.
