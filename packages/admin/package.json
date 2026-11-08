@@ -1,6 +1,6 @@
 {
   "name": "@tryvitris/website-admin-harness",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "type": "module",
   "license": "MIT",
   "description": "Cloudflare business admin runtime and agent kit",
@@ -48,6 +48,18 @@
     "./maintenance": {
       "types": "./dist/maintenance.d.ts",
       "default": "./dist/maintenance.js"
+    },
+    "./email-campaigns": {
+      "types": "./dist/email-campaigns.d.ts",
+      "default": "./dist/email-campaigns.js"
+    },
+    "./email-campaigns/website": {
+      "types": "./dist/email-website.d.ts",
+      "default": "./dist/email-website.js"
+    },
+    "./email-campaigns/signup": {
+      "types": "./dist/email-signup.d.ts",
+      "default": "./dist/email-signup.js"
     }
   },
   "bin": {
@@ -87,7 +99,15 @@
     "dist/signon.d.ts",
     "vitris-release.json",
     "dist/maintenance.js",
-    "dist/maintenance.d.ts"
+    "dist/maintenance.d.ts",
+    "dist/email-campaigns.js",
+    "dist/email-campaigns.d.ts",
+    "dist/email-env.d.ts",
+    "dist/email-website.js",
+    "dist/email-website.d.ts",
+    "dist/email-signup.js",
+    "dist/email-signup.d.ts",
+    "docs/EMAIL-CAMPAIGNS.md"
   ],
   "dependencies": {
     "react": "^19.0.0",

@@ -2,6 +2,8 @@ import {schedulingPermissions} from './scheduling.ts';
 import {clientPortfolioPermissions} from './client-portfolio.ts';
 import {clientOnboardingPermissions} from './client-onboarding.ts';
 import {billingPermissions} from './billing.ts';
+import {emailCampaignPermissions} from './email-campaigns.ts';
+export * from './email-campaigns.ts';
 export * from './billing.ts';
 export * from './stripe-billing.ts';
 export * from './client-portfolio.ts';
@@ -12,11 +14,11 @@ export * from './pairing.ts';
 export * from './signon.ts';
 export const contractVersion = 1;
 export const coreSections = ['overview', 'leads', 'analytics', 'settings', 'access', 'activity'] as const;
-export const permissions = ['leads:read', 'leads:write', 'analytics:read', 'settings:write', 'access:read', 'access:write', 'activity:read', 'tasks:read', 'tasks:write', ...schedulingPermissions, ...clientPortfolioPermissions, ...clientOnboardingPermissions, ...billingPermissions] as const;
+export const permissions = ['leads:read', 'leads:write', 'analytics:read', 'settings:write', 'access:read', 'access:write', 'activity:read', 'tasks:read', 'tasks:write', ...schedulingPermissions, ...clientPortfolioPermissions, ...clientOnboardingPermissions, ...billingPermissions, ...emailCampaignPermissions] as const;
 export type Permission = typeof permissions[number];
 export type Role = 'owner' | 'administrator' | 'editor' | 'analyst';
 export const roles: Record<Role, readonly Permission[]> = {
-  owner: permissions, administrator: permissions.filter(p => p!=='access:write' && !(clientPortfolioPermissions as readonly string[]).includes(p) && !(clientOnboardingPermissions as readonly string[]).includes(p) && !(billingPermissions as readonly string[]).includes(p)),
+  owner: permissions, administrator: permissions.filter(p => p!=='access:write' && !(clientPortfolioPermissions as readonly string[]).includes(p) && !(clientOnboardingPermissions as readonly string[]).includes(p) && !(billingPermissions as readonly string[]).includes(p) && !(emailCampaignPermissions as readonly string[]).includes(p)),
   editor: ['leads:read', 'leads:write', 'activity:read', 'tasks:read', 'tasks:write'],
   analyst: ['analytics:read', 'activity:read'],
 };
@@ -48,7 +50,7 @@ export function isWebsiteTheme(value: unknown): value is WebsiteTheme {
   return isObject(value) && Object.keys(value).length > 0 && Object.entries(value).every(([key,color]) => (websiteColorKeys as readonly string[]).includes(key) && isThemeColor(color));
 }
 export interface ModuleDefinition {
-  ui?: 'stripe-billing' | 'stripe-account';
+  ui?: 'stripe-billing' | 'stripe-account' | 'email-campaigns';
   id: string; version: number; label: string; permission: Permission;
   description: string;
 }

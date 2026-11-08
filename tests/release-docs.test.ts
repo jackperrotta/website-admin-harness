@@ -10,7 +10,7 @@ test('each public admin package receives its own notes and exact specification',
  const version='9.9.9',packages:Record<string,unknown>={};await mkdir(join(root,'docs/releases'),{recursive:true});await writeFile(join(root,'README.md'),'# Runtime specification');
  for(const [dir,id,name] of entries){await mkdir(join(root,'packages',dir),{recursive:true});await writeFile(join(root,'packages',dir,'package.json'),JSON.stringify({name,version}));await writeFile(join(root,'packages',dir,'README.md'),'# '+id+' specification');packages[id]={title:id,notesScope:'package',notes:[id+' shipped change.']};}
  await writeFile(join(root,'docs/releases',version+'.json'),JSON.stringify({schemaVersion:1,version,packages}));await prepareReleaseDocumentation(root,version);
- for(const [dir,id,name]of entries){const manifest=JSON.parse(await readFile(join(root,'packages',dir,'vitris-release.json'),'utf8')) as Record<string,unknown>;assertReleaseDocumentation(manifest,name,version);assert.deepEqual(manifest.notes,[id+' shipped change.']);assert.throws(()=>assertReleaseDocumentation({...manifest,documentation:'tampered'},name,version),/mismatched/);}
+ for(const [dir,id,name]of entries){const manifest=JSON.parse(await readFile(join(root,'packages',dir,'vitris-release.json'),'utf8')) as Record<string,unknown>;assertReleaseDocumentation(manifest,name,version);assert.equal(manifest.documentation,await readFile(join(root,'packages',dir,'README.md'),'utf8'));assert.deepEqual(manifest.notes,[id+' shipped change.']);assert.throws(()=>assertReleaseDocumentation({...manifest,documentation:'tampered'},name,version),/mismatched/);}
  }finally{await rm(root,{recursive:true,force:true});}
 });
 test('all three receipts are required and failed refresh is safely retryable',async()=>{

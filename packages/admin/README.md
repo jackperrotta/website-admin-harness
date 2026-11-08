@@ -4,7 +4,7 @@ A standalone, open-source business website admin built around Cloudflare. Each b
 
 ## Working directory
 
-The standalone source lives in its own Git repository and npm workspace, separate from the website harness and customer-specific installations. Clone it as `website-admin-harness` (this workstation uses `E:\Projects\website-admin-harness`). The npm packages are `@tryvitris/website-admin-harness`, `@tryvitris/create-website-admin-harness`, and `@tryvitris/website-admin-contracts`.
+The standalone source lives in its own Git repository and npm workspace, separate from the website harness and customer-specific installations. Clone it as `website-admin-harness`. The npm packages are `@tryvitris/website-admin-harness`, `@tryvitris/create-website-admin-harness`, and `@tryvitris/website-admin-contracts`.
 
 Repository: [jackperrotta/website-admin-harness](https://github.com/jackperrotta/website-admin-harness).
 
@@ -121,3 +121,10 @@ Calendar synchronization source and local preview: see [setup and operations](ht
 Standard website guest bookings are opt-in; read [setup and verification](https://github.com/jackperrotta/website-admin-harness/blob/v1.0.0/packages/admin/agent/refs/public-booking.md) before enabling them.
 
 Customer email and private cancellation/rescheduling link setup: [reference](https://github.com/jackperrotta/website-admin-harness/blob/v1.0.0/packages/admin/agent/refs/customer-notifications.md).
+
+
+### Optional Cloudflare customer email
+
+Version 1.6.0 adds the opt-in `email-campaigns` module: contacts and CSV imports, preferences and suppressions, audience segments, structured versioned templates, captured campaigns, schedules, guided website workflows, recurring customer reports, and native Cloudflare sending/feedback. Each business retains its own account and resources. Newsletter composition and recurring drafts are available; general newsletter/promotional transmission is not enabled under Cloudflare's current transactional-only scope. No additional email provider is included.
+
+Prepare an existing installation with `vitris-admin email-setup --dir EXISTING_ADMIN --from EMAIL_CONFIG.json --plan`, review the diff, then use `--apply`. Package updates do not enable, migrate, deploy, or send automatically. Read the packaged [setup, acceptance and recovery guide](docs/EMAIL-CAMPAIGNS.md) and [agent reference](agent/refs/email-campaigns.md).

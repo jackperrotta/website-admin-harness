@@ -36,6 +36,10 @@ Open http://127.0.0.1:4391 and choose **Open local demo**. The demo uses synthet
 
 The first supported production target is Cloudflare. Interfaces and export contracts can support other implementations later. This project does not require a central Vitris login or subscription server.
 
+## Optional Cloudflare customer email
+
+The opt-in [Email campaigns module](docs/EMAIL-CAMPAIGNS.md) adds contacts/imports, audience segments, structured versioned templates, captured tests, immutable campaign approvals, native Cloudflare delivery feedback, guided transactional website workflows, and recurring customer reports. Each business uses its own Cloudflare account and resources. Newsletter composition and recurring drafts are available; promotional/newsletter delivery is not enabled by relabeling content. Use `vitris-admin email-setup --plan` to prepare an installation diff. No module, cloud resource, remote migration, live sending, or deployment is activated by a package update.
+
 ## Available in version 1.0
 
 - Branded responsive shell with Overview, Leads, Analytics, Settings, Users and access, and Activity.
@@ -132,7 +136,7 @@ Version 1.3.0 adds opt-in named webmaster sign-on and linked logout. See [instal
 
 The 1.4.0 connection capability supports one client-owner review for organization analytics reporting and optional named sign-in to an existing account. Reporting, human membership, SSO and billing retain independent grants. It never creates an account, changes a role or starts a subscription. See [the installation handoff and recovery guide](packages/admin/agent/refs/reporting-pairing.md#repeatable-add-website-setup-140).
 
-An authenticated Vitris owner starts from Add website, reviews exact discovered identities and requests approval. An unprepared client receives a public setup-file handoff for its installation agent. The `webmaster-setup --dir EXISTING_ADMIN --from CONNECTION_FILE --plan|--apply` CLI prepares a local reviewable diff, optional migration inputs and only new secret inputs; backup, migration, secret installation and deployment remain explicit actions on the client’s owning resources. Existing trust pins, keys, backend bindings, forms, accounts and billing must be preserved.
+An authenticated Vitris owner starts from Add website, reviews exact discovered identities and requests approval. An unprepared client receives a public setup-file handoff for its installation agent. The `webmaster-setup --dir EXISTING_ADMIN --from CONNECTION_FILE --plan|--apply` CLI prepares a local reviewable diff, optional migration inputs and only new secret inputs; backup, migration, secret installation and deployment remain explicit actions on the clientï¿½s owning resources. Existing trust pins, keys, backend bindings, forms, accounts and billing must be preserved.
 
 
 ### Agent package maintenance

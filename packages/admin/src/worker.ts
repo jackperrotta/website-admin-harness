@@ -24,7 +24,7 @@ export interface AdminEnv extends HarnessEnv, CalendarEnv, BookingEnv, AccountEn
 }
 export interface ModuleContext {request: Request; env: AdminEnv; manifest: AdminManifest; user: User; require: (permission: Permission) => void; audit: (action: string) => Promise<unknown>}
 export interface ModuleServiceContext {request:Request;env:AdminEnv;manifest:AdminManifest;context?:ExecutionContext}
-export interface AdminModule {id: string; version: number; label: string; permission: Permission; description: string; ui?:'stripe-billing'|'stripe-account'; disableLocalDemo?: true; handle: (context: ModuleContext) => Promise<Response>; hooks?:readonly {path:string;handle:(context:ModuleServiceContext)=>Promise<Response>}[]; scheduled?:(env:AdminEnv,manifest:AdminManifest)=>Promise<void>}
+export interface AdminModule {id: string; version: number; label: string; permission: Permission; description: string; ui?:'stripe-billing'|'stripe-account'|'email-campaigns'; disableLocalDemo?: true; handle: (context: ModuleContext) => Promise<Response>; hooks?:readonly {path:string;handle:(context:ModuleServiceContext)=>Promise<Response>}[]; publicRoutes?:readonly {path:string;methods:readonly string[];retainWhenDisabled?:true;handle:(context:ModuleServiceContext)=>Promise<Response>}[]; queue?:{name:string;retainWhenDisabled?:true;handle:(batch:MessageBatch<unknown>,env:AdminEnv,manifest:AdminManifest)=>Promise<void>}; maintenance?:(env:AdminEnv,manifest:AdminManifest)=>Promise<void>; scheduled?:(env:AdminEnv,manifest:AdminManifest)=>Promise<void>}
 const now = () => Math.floor(Date.now() / 1000);
 const cookieName = '__Host-vitris-admin';
 async function digest(value: string) {
@@ -94,6 +94,10 @@ export function createAdmin(input: unknown, options: {modules?: AdminModule[]} =
   const modules = [workQueueModule, schedulingModule, webmasterModule, ...(options.modules || [])]; validateModules(manifest, modules);
   const hooks=(options.modules||[]).flatMap(module=>(module.hooks||[]).map(hook=>({...hook,moduleId:module.id})));
   if(hooks.some(h=>!new RegExp(`^/api/modules/${h.moduleId}/hooks/[a-z][a-z0-9-]*$`).test(h.path))||new Set(hooks.map(h=>h.path)).size!==hooks.length)throw new Error('Module hooks need unique exact paths within their own hooks namespace');
+  const publicRoutes=(options.modules||[]).flatMap(module=>(module.publicRoutes||[]).map(route=>({...route,moduleId:module.id})));
+  if(publicRoutes.some(r=>!new RegExp(`^/api/modules/${r.moduleId}/public/[a-z][a-z0-9-]*$`).test(r.path)||!r.methods.length||r.methods.some(m=>!['GET','POST','OPTIONS'].includes(m)))||new Set(publicRoutes.map(r=>r.path)).size!==publicRoutes.length)throw new Error('Public module routes need unique exact paths and explicit methods.');
+  const queues=(options.modules||[]).filter(m=>m.queue);
+  if(queues.some(m=>!/^[a-z][a-z0-9-]{0,62}$/.test(m.queue!.name))||new Set(queues.map(m=>m.queue!.name)).size!==queues.length)throw new Error('Module queues need unique exact queue names.');
   return {async fetch(request: Request, env: AdminEnv, context?: ExecutionContext): Promise<Response> {
     let response: Response;
     try {
@@ -102,11 +106,13 @@ export function createAdmin(input: unknown, options: {modules?: AdminModule[]} =
       if (isLoopback(manifest.adminOrigin) && !local(manifest, env)) throw new HttpError(503, 'Local installation requires explicit local mode');
       const bookingRoute = path.startsWith('/api/booking/v1/');
       const hook=hooks.find(h=>h.path===path);
+      const publicRoute=publicRoutes.find(r=>r.path===path);
       const signOnRoute=path.startsWith(signOnBase+'/'),signOnMachine=['register','exchange','introspect'].some(action=>path===signOnBase+'/'+action);
       const pairingRoute=path.startsWith(pairingBase+'/'),pairingMachine=['request','poll','exchange','report','rotate','revoke'].some(action=>path===pairingBase+'/'+action);
-      if (!bookingRoute && !hook && !pairingMachine && !signOnMachine && !['GET','HEAD'].includes(request.method) && request.headers.get('origin') !== manifest.adminOrigin) throw new HttpError(403, 'Origin check failed');
+      if (!bookingRoute && !hook && !publicRoute && !pairingMachine && !signOnMachine && !['GET','HEAD'].includes(request.method) && request.headers.get('origin') !== manifest.adminOrigin) throw new HttpError(403, 'Origin check failed');
       const calendarCallback = path.match(/^\/api\/scheduling\/oauth\/(google|microsoft)\/callback$/);
-      if(signOnRoute)response=await new SignOnService(env,manifest).handle(request,signOnMachine?null:await session(env,request,manifest));
+      if(publicRoute){if(!manifest.modules.includes(publicRoute.moduleId)&&!publicRoute.retainWhenDisabled)throw new HttpError(404,'Module is disabled');if(!publicRoute.methods.includes(request.method))throw new HttpError(405,'Method not allowed');response=await publicRoute.handle({request,env,manifest,context});}
+      else if(signOnRoute)response=await new SignOnService(env,manifest).handle(request,signOnMachine?null:await session(env,request,manifest));
       else if(pairingRoute)response=await new PairingIssuer(env,manifest).handle(request,pairingMachine?null:await session(env,request,manifest));
       else if(hook){if(!manifest.modules.includes(hook.moduleId))throw new HttpError(404,'Module is disabled');if(request.method!=='POST')throw new HttpError(405,'Method not allowed');response=await hook.handle({request,env,manifest,context});}
       else if (bookingRoute) response = await new PublicBooking(env, manifest).handle(request);
@@ -124,17 +130,20 @@ export function createAdmin(input: unknown, options: {modules?: AdminModule[]} =
     headers.set('cache-control', 'no-store'); headers.set('x-content-type-options', 'nosniff');
     headers.set('referrer-policy', 'no-referrer'); headers.set('x-frame-options', 'DENY');
     headers.set('content-security-policy', "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
-    const emailPreview = request.method === 'GET' && /^\/api\/modules\/scheduling\/notifications\/[a-zA-Z0-9_-]+\/document$/.test(new URL(request.url).pathname) && response.status === 200 && response.headers.get('content-type')?.startsWith('text/html');
+    const emailPreview = request.method === 'GET' && (/^\/api\/modules\/scheduling\/notifications\/[a-zA-Z0-9_-]+\/document$/.test(new URL(request.url).pathname)||['/api/modules/email-campaigns/preview','/api/modules/email-campaigns/capture-document'].includes(new URL(request.url).pathname)) && response.status === 200 && response.headers.get('content-type')?.startsWith('text/html');
     if (emailPreview) {
-      headers.set('content-security-policy', "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'self'; sandbox allow-popups allow-popups-to-escape-sandbox");
+      headers.set('content-security-policy', "default-src 'none'; style-src 'unsafe-inline'; img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'self'; sandbox allow-popups allow-popups-to-escape-sandbox");
       headers.set('x-frame-options','SAMEORIGIN');headers.set('x-robots-tag','noindex, noarchive');
     }
+    if(publicRoutes.some(r=>r.path===new URL(request.url).pathname)&&response.headers.get('content-type')?.startsWith('text/html')){headers.set('content-security-policy',"default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'");headers.set('x-robots-tag','noindex, noarchive');}
     return new Response(response.body, {status: response.status, headers});
   }, async scheduled(_controller: ScheduledController, env: AdminEnv) {
-    await new AccountService(env,manifest).tick();
-    if (manifest.modules.includes('scheduling')) {await new CalendarService(env, manifest).tick(); await new NotificationService(env, manifest).tick();}
-    for(const module of options.modules||[])if(manifest.modules.includes(module.id)&&module.scheduled)await module.scheduled(env,manifest);
-  }};
+    const failures:unknown[]=[];const run=async(task:()=>Promise<unknown>)=>{try{await task();}catch(error){failures.push(error);}};
+    await run(()=>new AccountService(env,manifest).tick());
+    if (manifest.modules.includes('scheduling')) {await run(()=>new CalendarService(env, manifest).tick());await run(()=>new NotificationService(env, manifest).tick());}
+    for(const module of options.modules||[]){if(manifest.modules.includes(module.id)&&module.scheduled)await run(()=>module.scheduled!(env,manifest));else if(!manifest.modules.includes(module.id)&&module.maintenance)await run(()=>module.maintenance!(env,manifest));}
+    if(failures.length)throw new Error('One or more scheduled admin services failed; independent services were still processed.');
+  },async queue(batch:MessageBatch<unknown>,env:AdminEnv){const module=queues.find(m=>m.queue!.name===batch.queue);if(!module||!manifest.modules.includes(module.id)&&!module.queue!.retainWhenDisabled)throw new Error('Queue is not registered for this installation.');await module.queue!.handle(batch,env,manifest);}};
 }
 
 async function api(request: Request, env: AdminEnv, manifest: AdminManifest, demo: boolean, path: string, url: URL, extensions: AdminModule[]): Promise<Response> {

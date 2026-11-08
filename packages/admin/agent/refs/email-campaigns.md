@@ -1,0 +1,13 @@
+# Cloudflare customer email module
+
+Read the installed package's `node_modules/@tryvitris/website-admin-harness/docs/EMAIL-CAMPAIGNS.md` or the repository's [module guide](https://github.com/jackperrotta/website-admin-harness/blob/main/docs/EMAIL-CAMPAIGNS.md) and inspect source before changing this module. It is an optional trusted `/email-campaigns` export, registered explicitly as `email-campaigns`; normal upgrades do not enable it.
+
+Each business owns its Cloudflare account, sender, Worker, D1, R2, feedback queue/subscription, and exact origins. Use only Cloudflare Email Service. Supported live purposes are agreed customer reports, relevant service updates, and requested enquiry responses. Newsletter drafts remain drafts; a label or subscription alone cannot bypass the transactional-only transport scope. Never add an external provider or modify authentication/appointment senders as a module side effect.
+
+Use `vitris-admin email-setup --dir INSTALLATION --from CONFIG.json --plan`, review the exact local diff, then `--apply`. `--local` targets local files and requires loopback origins. No command provisions, remotely migrates, deploys, subscribes contacts, sends email, or rotates keys. Existing Pages installations retain Pages and use the explicitly configured private `createEmailCampaignWorker` for cron/feedback.
+
+Copy the optional module migration to the next installation migration number after backing up the intended D1. A website producer has a separate outbox migration and grant; include prepared event statements in the existing authoritative form transaction. Preserve existing forms, origin checks, notifications, backend grants, users, sessions, secrets, and authored wrappers. Forward `queue` and `scheduled` handlers exactly.
+
+New permissions are scoped to email operations and excluded from other default roles. Check per-action authority, site/installation identity, exact public paths, contact evidence, capture/send mode, immutable approvals, lease state, and suppressions on every send. Queued captures never become live mail. Uncertain submissions never auto-retry. Retain scoped public opt-out and native feedback when sending is disabled; they grant no campaign access.
+
+Keep keys, live recipients, imports/exports, bodies, and provider payloads outside source, public archives, and logs. Preserve the stable identity key and old encryption ring entries. Verify sender/DNS/quota/feedback independently; readiness flags only report configuration. Test captures do not prove inbox delivery or real challenge execution. Follow existing release gates and obtain existing deployment/sending authorization for a concrete reviewed installation diff.

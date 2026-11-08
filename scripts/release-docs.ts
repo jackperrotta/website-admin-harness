@@ -19,9 +19,9 @@ export function assertReleaseDocumentation(value:unknown,name:string,version:str
 export async function prepareReleaseDocumentation(root:string,version:string){
  const raw:unknown=JSON.parse(await readFile(join(root,'docs/releases',version+'.json'),'utf8'));
  if(!object(raw)||raw.schemaVersion!==1||raw.version!==version||!object(raw.packages))throw Error('Release documentation version mismatch');
- for(const [directory,id,readmePath] of [['admin','runtime','README.md'],['contracts','contracts','packages/contracts/README.md'],['create-admin','initializer','packages/create-admin/README.md']]){
+ for(const [directory,id,readmePath] of [['admin','runtime','packages/admin/README.md'],['contracts','contracts','packages/contracts/README.md'],['create-admin','initializer','packages/create-admin/README.md']]){
   const p=JSON.parse(await readFile(join(root,'packages',directory,'package.json'),'utf8')) as {name:string;version:string};if(p.version!==version)throw Error('Admin package versions differ');
-  const details=note(raw.packages[id]),documentation=(await readFile(join(root,readmePath),'utf8')).replace(/ \(this workstation uses `[^`]+`\)/g,'');
+  const details=note(raw.packages[id]),documentation=await readFile(join(root,readmePath),'utf8');
   const manifest={schemaVersion:1,name:p.name,version,...details,repository:'https://github.com/jackperrotta/website-admin-harness',readmePath,ref:'v'+version,documentation,documentationSha256:createHash('sha256').update(documentation).digest('hex')};
   await writeFile(join(root,'packages',directory,'vitris-release.json'),JSON.stringify(manifest,null,2)+'\n');
  }

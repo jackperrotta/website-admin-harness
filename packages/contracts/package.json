@@ -1,6 +1,6 @@
 {
   "name": "@tryvitris/website-admin-contracts",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "type": "module",
   "license": "MIT",
   "description": "Validated installation and module contracts for Cloudflare business admin apps",
@@ -12,6 +12,10 @@
     "./scheduling": {
       "types": "./dist/scheduling.d.ts",
       "default": "./dist/scheduling.js"
+    },
+    "./email-campaigns": {
+      "types": "./dist/email-campaigns.d.ts",
+      "default": "./dist/email-campaigns.js"
     }
   },
   "files": [

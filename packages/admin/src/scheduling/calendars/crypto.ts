@@ -1,6 +1,6 @@
 import {CalendarError, type CalendarEnv} from './types.ts';
 
-export const base64url = (bytes: Uint8Array): string => btoa(String.fromCharCode(...bytes)).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '');
+export const base64url = (bytes: Uint8Array): string => {let binary='';for(let i=0;i<bytes.length;i+=32768)binary+=String.fromCharCode(...bytes.subarray(i,i+32768));return btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '');};
 function decode(value: string): Uint8Array<ArrayBuffer> {return Uint8Array.from(atob(value.replaceAll('-', '+').replaceAll('_', '/')), c => c.charCodeAt(0));}
 export async function digest(value: string): Promise<string> {return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value))), b => b.toString(16).padStart(2, '0')).join('');}
 export function random(): string {return base64url(crypto.getRandomValues(new Uint8Array(32)));}

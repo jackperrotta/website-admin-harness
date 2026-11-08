@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "version": "1.6.0",
+  "packages": {
+    "runtime": {
+      "title": "Cloudflare customer email campaigns and reports",
+      "notesScope": "package",
+      "notes": [
+        "Adds the opt-in email-campaigns module with contact imports and preferences, bounded audience rules, structured versioned templates, immutable campaign approvals, captured tests, scheduling, guided transactional workflows, and fresh recurring customer reports.",
+        "Adds native Cloudflare structured sending, purpose/evidence checks, durable leases and quotas, uncertain-submission review, native delivery-feedback queues, suppressions, and scoped public preference endpoints that remain usable after sending is disabled. No external email provider or promotional newsletter transport is included.",
+        "Adds the server-only encrypted website event outbox and browser-safe confirmed signup helper, an installation plan/apply command, optional additive migrations, private Pages consumer support, and reviewable per-business setup/recovery guidance. Existing installations and forms are never enabled, deployed, or migrated automatically."
+      ]
+    },
+    "contracts": {
+      "title": "Customer email purposes audiences and workflows",
+      "notesScope": "package",
+      "notes": [
+        "Adds typed, validated Cloudflare email settings, contact and permission evidence, segment rules, structured templates, campaign purposes, guided automation steps, website events, workspace responses, and per-account cost calculations.",
+        "Adds explicit email permissions excluded from existing non-owner role defaults and identifies the optional compiled email workspace without exposing handlers or credentials in bootstrap metadata."
+      ]
+    },
+    "initializer": {
+      "title": "Initialize with optional customer email guidance",
+      "notesScope": "package",
+      "notes": [
+        "Pins runtime 1.6.0 so new installations receive the optional email setup command, agent guidance, native feedback dispatch support, and compiled email workspace. This initializer update changes the dependency version only; it does not enable the module, provision resources, or send email."
+      ]
+    }
+  }
+}
