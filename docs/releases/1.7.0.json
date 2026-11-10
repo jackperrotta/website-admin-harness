@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "version": "1.7.0",
+  "packages": {
+    "runtime": {
+      "title": "Google Search Console analytics and website search evidence",
+      "notesScope": "package",
+      "notes": [
+        "Adds the explicitly enabled Search Console connection in Settings and search reports in Analytics, with read-only Google OAuth by default, optional sitemap management, encrypted offline credentials, browser-bound single-use authorization and revision-fenced property selection and disconnection.",
+        "Adds Pacific-time search performance types, dimensions, filters and pagination, durable bounded report snapshots, scheduled report refresh, exact-website URL inspection and sitemap status/submission. Domain-property queries are constrained to the installation website origin; Google quotas, partial data, query anonymity, unavailable reports and pagination limits remain visible.",
+        "Adds migration 0012, a separate search-console:manage capability, setup and agent-care guidance, website verification handoff, fixture coverage and packed-consumer checks. Existing installations are not enabled, connected, deployed or migrated automatically.",
+        "Adds authenticated owner-managed Google application setup, OAuth Web client JSON import, write-only encrypted client secrets, exact callback guidance and application revision fencing. Adds a dedicated Search Console cron companion for existing Cloudflare Pages installations without changing their hosting, mail, billing or other schedulers."
+      ]
+    },
+    "contracts": {
+      "title": "Typed Google search reports and scoped connection management",
+      "notesScope": "package",
+      "notes": [
+        "Adds Search Console query/report/status types, supported search dimensions and types, provenance, Pacific timezone, Google partial-data metadata, pagination and source-limit disclosures.",
+        "Adds search-console:manage to owner and administrator role defaults, retains analyst read-only access through analytics:read, and identifies the optional connection separately from business navigation.",
+        "Adds the redacted owner application-settings response for in-admin OAuth setup, including revision, callback URL, credential presence and configuration source."
+      ]
+    },
+    "initializer": {
+      "title": "Initialize with the Search Console capable runtime",
+      "notesScope": "package",
+      "notes": [
+        "Updates the initializer version and pins runtime 1.7.0. This is a version/dependency-only initializer change; new installations receive the runtime and agent guidance while Search Console remains disabled until explicitly configured and authorized."
+      ]
+    }
+  }
+}

@@ -17,6 +17,7 @@ import {pairingFixture} from './pairing-fixture.ts';
 import {signOnFixture} from './signon-fixture.ts';
 import {assertSafeArchive} from '../scripts/publication-safety.ts';
 import {emailFixture} from './email-campaigns-fixture.ts';
+import {searchConsoleFixture} from './search-console-fixture.ts';
 const npmCLI=process.env.npm_execpath;
 const npm=(args: string[],cwd: string)=>execFileSync(process.execPath,[npmCLI!,...args],{cwd,encoding:'utf8',stdio:['ignore','pipe','pipe']});
 test('packed npm packages scaffold an external installation, agent kit, and safe website connection',async()=>{
@@ -37,6 +38,7 @@ test('packed npm packages scaffold an external installation, agent kit, and safe
   for(const packed of [runtime,initializer,contracts])await assertSafeArchive(join(root,packed.filename));
   const paths=runtime.files.map(x=>x.path);
   assert.ok(paths.includes('dist/worker.js')&&paths.includes('dist/client/index.html')&&paths.includes('agent/WORKFLOW.md'));
+  for(const file of ['migrations/0012_search_console.sql','migrations/0013_search_console_app.sql','dist/search-console.js','dist/search-console.d.ts','dist/search-console-env.d.ts','dist/contracts/search-console.d.ts','agent/refs/search-console.md'])assert.ok(paths.includes(file),'Missing packed Search Console file: '+file);
   assert.ok(paths.includes('dist/client-portfolio.js') && paths.includes('dist/client-portfolio.d.ts'));
   assert.ok(paths.includes('dist/client-onboarding.js') && paths.includes('dist/client-onboarding.d.ts') && paths.includes('dist/contracts/client-onboarding.d.ts'));
   assert.ok(paths.includes('prototypes/client-onboarding/migrations/0010_client_onboarding_prototype.sql'));
@@ -74,6 +76,8 @@ test('packed npm packages scaffold an external installation, agent kit, and safe
   assert.ok(paths.every(x=>!x.startsWith('dist/types/')&&!x.endsWith('.map')));
   const tool=join(root,'tool');await mkdir(tool);
   npm(['install','--ignore-scripts','--no-audit','--no-fund',join(root,runtime.filename),join(root,initializer.filename),join(root,contracts.filename)],tool);
+  const search=await searchConsoleFixture(join(tool,'node_modules/@tryvitris/website-admin-harness'));
+  try{await search.connect();const report=await search.request('/api/search-console/report',undefined,'analyst');assert.equal(report.status,200);assert.equal((await report.json() as {source:string}).source,'google-search-console');assert.equal((await search.request('/api/search-console/connect',{},'analyst')).status,403);}finally{await search.dispose();}
   for(const name of ['website-admin-harness','website-admin-contracts','create-website-admin-harness']){const directory=join(tool,'node_modules/@tryvitris',name),notes=JSON.parse(await readFile(join(directory,'vitris-release.json'),'utf8'));assert.equal(notes.documentation,await readFile(join(directory,'README.md'),'utf8'),'Release documentation must match the actual package README');}
   const email=await emailFixture({runtimeRoot:join(tool,'node_modules/@tryvitris/website-admin-harness'),localWebsite:true,server:true});
   try{

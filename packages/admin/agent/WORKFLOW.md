@@ -15,6 +15,8 @@ Use `refs/modules.md` for module rules and `refs/cloudflare.md` for deployment. 
 
 Read `refs/harness.md` before changing backend connections or data adapters. A connection grants access to existing data; it does not enable website collection or send notifications automatically.
 
+Read `refs/search-console.md` before enabling Google Search Console, changing its OAuth/property/website verification setup, or using its reports in analytics and agent care. Google search data and website traffic have separate dates, scopes and metrics.
+
 Read `refs/webmaster.md` before enabling or changing a Managed by Webmaster relationship, its scoped accounts, revocation or optional client billing. Management and billing remain independent.
 
 Read `refs/leads.md` for lead follow-up, full-history search, installation scoping, compatible backend migrations and read-only connections.

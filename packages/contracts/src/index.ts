@@ -4,6 +4,7 @@ import {clientOnboardingPermissions} from './client-onboarding.ts';
 import {billingPermissions} from './billing.ts';
 import {emailCampaignPermissions} from './email-campaigns.ts';
 export * from './email-campaigns.ts';
+export * from './search-console.ts';
 export * from './billing.ts';
 export * from './stripe-billing.ts';
 export * from './client-portfolio.ts';
@@ -14,7 +15,7 @@ export * from './pairing.ts';
 export * from './signon.ts';
 export const contractVersion = 1;
 export const coreSections = ['overview', 'leads', 'analytics', 'settings', 'access', 'activity'] as const;
-export const permissions = ['leads:read', 'leads:write', 'analytics:read', 'settings:write', 'access:read', 'access:write', 'activity:read', 'tasks:read', 'tasks:write', ...schedulingPermissions, ...clientPortfolioPermissions, ...clientOnboardingPermissions, ...billingPermissions, ...emailCampaignPermissions] as const;
+export const permissions = ['leads:read', 'leads:write', 'analytics:read', 'search-console:manage', 'settings:write', 'access:read', 'access:write', 'activity:read', 'tasks:read', 'tasks:write', ...schedulingPermissions, ...clientPortfolioPermissions, ...clientOnboardingPermissions, ...billingPermissions, ...emailCampaignPermissions] as const;
 export type Permission = typeof permissions[number];
 export type Role = 'owner' | 'administrator' | 'editor' | 'analyst';
 export const roles: Record<Role, readonly Permission[]> = {
@@ -64,6 +65,7 @@ export interface BootstrapResponse {
   emailLoginConfigured?: boolean;
   privateLocalSignIn?: boolean;
   webmasterEnabled?: boolean;
+  searchConsoleEnabled?: boolean;
 }
 export type DataSource = 'synthetic' | 'connected' | 'not-connected';
 export interface LeadRow {

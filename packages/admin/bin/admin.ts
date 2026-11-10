@@ -71,7 +71,7 @@ export async function run(args: string[]=process.argv.slice(2)): Promise<void> {
   }
   if(command==='module'){
     const id=slug(v.slug||'');const target=join(root,'modules',id);if(await exists(target))throw new Error('Module already exists');
-    if([...coreSections,'work-queue','scheduling','webmaster'].includes(id))throw new Error('This module ID is reserved by the admin runtime');
+    if([...coreSections,'work-queue','scheduling','webmaster','search-console'].includes(id))throw new Error('This module ID is reserved by the admin runtime');
     await read(join(root,'admin.config.json'));await mkdir(target,{recursive:true});
     await writeFile(join(target,'index.ts'),`import type {AdminModule} from '@tryvitris/website-admin-harness/worker';\n\n// Trusted build-time module. Add scoped permission checks before every mutation.\nexport default {\n  id: '${id}', version: 1, label: ${JSON.stringify(v.name||id)}, permission: 'activity:read',\n  description: 'A business-specific module',\n  async handle({request, env, manifest, user, require: authorize}) {\n    if (request.method !== 'GET') return Response.json({error: 'Method not allowed'}, {status: 405});\n    return Response.json({rows: [], message: 'Add a site-scoped query and an additive migration to connect records.'});\n  }\n} satisfies AdminModule;\n`);
     await writeFile(join(target,'README.md'),`# ${id}\n\nRead agent/refs/modules.md. Import this definition into both Worker entry points and pass modules: [definition] to createAdmin. Add the ID to both installation manifests. Review permission choice, add an additive migration if needed, and test disabled-module and cross-site access before deployment. This scaffold is not enabled automatically.\n`);

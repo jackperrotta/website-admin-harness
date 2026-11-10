@@ -20,4 +20,6 @@ New module scaffolds use `modules/<slug>/index.ts` with `satisfies AdminModule`.
 
 `webmaster` is another reserved built-in optional module. It appears as a connection in Settings, with no separate navigation entry. Read `refs/webmaster.md` for explicit owner configuration, scoped team access, persistent revocation and independent optional billing.
 
+`search-console` is a reserved built-in optional connection. It appears in Settings and Analytics without a new navigation section. Read `refs/search-console.md` for OAuth secrets, the additive migration, website verification and permission/data limits.
+
 The optional `email-campaigns` export registers narrowly scoped exact public routes and a named native feedback queue. Public routes declare allowed methods and implement purpose-specific authentication. Only explicitly retained opt-out/assets/feedback remain when sending is disabled; this grants no administrative surface. Queue names are exact, unique installation-owned registrations. Preserve both `scheduled` and `queue` in wrappers. Read `refs/email-campaigns.md` before setup.

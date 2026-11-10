@@ -15,9 +15,12 @@ import {schedulingModule, handleScheduling, hasSchedulingAccess} from './schedul
 import {SchedulingError} from './scheduling/store.ts';
 import {CalendarService} from './scheduling/calendars/service.ts';
 import {CalendarError, type CalendarEnv} from './scheduling/calendars/types.ts';
+import {SearchConsoleService} from './search-console/service.ts';
+import {searchWindow} from './search-console/query.ts';
+import {SearchConsoleError,type SearchConsoleEnv} from './search-console/types.ts';
 
 interface EmailBinding {send(message: {to: string; from: string; subject: string; text: string}): Promise<unknown>}
-export interface AdminEnv extends HarnessEnv, CalendarEnv, BookingEnv, AccountEnv, SignOnEnv {
+export interface AdminEnv extends HarnessEnv, CalendarEnv, BookingEnv, AccountEnv, SignOnEnv, SearchConsoleEnv {
   WEBMASTER_PAIRING_KEY?:string;WEBMASTER_PAIRING_HTTP?:Pick<Fetcher,'fetch'>;WEBMASTER_PAIRING_FIXTURE_MODE?:string;
   DB: D1Database; ASSETS: Pick<Fetcher, 'fetch'>; ASSET_STORE?: R2Bucket;
   MODE?: string; PASSWORD_LOGIN?: string; PASSWORD_PEPPER?: string; AUTH_EMAIL?: EmailBinding; AUTH_FROM?: string;
@@ -91,7 +94,7 @@ async function seedDemo(env: AdminEnv, manifest: AdminManifest) {
 
 export function createAdmin(input: unknown, options: {modules?: AdminModule[]} = {}) {
   const manifest = parseManifest(input);
-  const modules = [workQueueModule, schedulingModule, webmasterModule, ...(options.modules || [])]; validateModules(manifest, modules);
+  const modules = [workQueueModule, schedulingModule, webmasterModule, {id:'search-console',version:1,label:'Google Search Console',permission:'analytics:read' as const,description:'Google search performance and indexing connection'}, ...(options.modules || [])]; validateModules(manifest, modules);
   const hooks=(options.modules||[]).flatMap(module=>(module.hooks||[]).map(hook=>({...hook,moduleId:module.id})));
   if(hooks.some(h=>!new RegExp(`^/api/modules/${h.moduleId}/hooks/[a-z][a-z0-9-]*$`).test(h.path))||new Set(hooks.map(h=>h.path)).size!==hooks.length)throw new Error('Module hooks need unique exact paths within their own hooks namespace');
   const publicRoutes=(options.modules||[]).flatMap(module=>(module.publicRoutes||[]).map(route=>({...route,moduleId:module.id})));
@@ -111,7 +114,11 @@ export function createAdmin(input: unknown, options: {modules?: AdminModule[]} =
       const pairingRoute=path.startsWith(pairingBase+'/'),pairingMachine=['request','poll','exchange','report','rotate','revoke'].some(action=>path===pairingBase+'/'+action);
       if (!bookingRoute && !hook && !publicRoute && !pairingMachine && !signOnMachine && !['GET','HEAD'].includes(request.method) && request.headers.get('origin') !== manifest.adminOrigin) throw new HttpError(403, 'Origin check failed');
       const calendarCallback = path.match(/^\/api\/scheduling\/oauth\/(google|microsoft)\/callback$/);
-      if(publicRoute){if(!manifest.modules.includes(publicRoute.moduleId)&&!publicRoute.retainWhenDisabled)throw new HttpError(404,'Module is disabled');if(!publicRoute.methods.includes(request.method))throw new HttpError(405,'Method not allowed');response=await publicRoute.handle({request,env,manifest,context});}
+      if(path==='/api/search-console/oauth/callback'&&request.method==='GET'){
+        if(!manifest.modules.includes('search-console'))throw new HttpError(404,'Search Console is disabled');
+        response=await new SearchConsoleService(env,manifest).complete(request);
+      }
+      else if(publicRoute){if(!manifest.modules.includes(publicRoute.moduleId)&&!publicRoute.retainWhenDisabled)throw new HttpError(404,'Module is disabled');if(!publicRoute.methods.includes(request.method))throw new HttpError(405,'Method not allowed');response=await publicRoute.handle({request,env,manifest,context});}
       else if(signOnRoute)response=await new SignOnService(env,manifest).handle(request,signOnMachine?null:await session(env,request,manifest));
       else if(pairingRoute)response=await new PairingIssuer(env,manifest).handle(request,pairingMachine?null:await session(env,request,manifest));
       else if(hook){if(!manifest.modules.includes(hook.moduleId))throw new HttpError(404,'Module is disabled');if(request.method!=='POST')throw new HttpError(405,'Method not allowed');response=await hook.handle({request,env,manifest,context});}
@@ -123,7 +130,7 @@ export function createAdmin(input: unknown, options: {modules?: AdminModule[]} =
       else if (!path.startsWith('/api/')) response = await env.ASSETS.fetch(request);
       else response = await api(request, env, manifest, local(manifest, env) && !manifest.reportingPairing && !manifest.webmasterSignOn && !(options.modules || []).some(m => manifest.modules.includes(m.id) && m.disableLocalDemo), path, url, options.modules || []);
     } catch (error) {
-      response = error instanceof PairingError || error instanceof WebmasterError || error instanceof LeadError || error instanceof AccountError || error instanceof HttpError || error instanceof HarnessError || error instanceof SchedulingError || error instanceof CalendarError ? json({error: error.message,...(error instanceof PairingError?{code:error.code}:{})}, error.status) : json({error: 'The admin service could not complete this request. Check its database and bindings.'}, 500);
+      response = error instanceof SearchConsoleError || error instanceof PairingError || error instanceof WebmasterError || error instanceof LeadError || error instanceof AccountError || error instanceof HttpError || error instanceof HarnessError || error instanceof SchedulingError || error instanceof CalendarError ? json({error: error.message,...(error instanceof PairingError||error instanceof SearchConsoleError?{code:error.code}:{})}, error.status) : json({error: 'The admin service could not complete this request. Check its database and bindings.'}, 500);
     }
     if(context&&request.method==='POST'&&response.ok&&/^\/api\/(auth|access\/invitations)/.test(new URL(request.url).pathname))context.waitUntil(new AccountService(env,manifest).tick().catch(()=>{}));
     const headers = new Headers(response.headers);
@@ -141,6 +148,7 @@ export function createAdmin(input: unknown, options: {modules?: AdminModule[]} =
     const failures:unknown[]=[];const run=async(task:()=>Promise<unknown>)=>{try{await task();}catch(error){failures.push(error);}};
     await run(()=>new AccountService(env,manifest).tick());
     if (manifest.modules.includes('scheduling')) {await run(()=>new CalendarService(env, manifest).tick());await run(()=>new NotificationService(env, manifest).tick());}
+    if (manifest.modules.includes('search-console')) await run(()=>new SearchConsoleService(env,manifest).tick());
     for(const module of options.modules||[]){if(manifest.modules.includes(module.id)&&module.scheduled)await run(()=>module.scheduled!(env,manifest));else if(!manifest.modules.includes(module.id)&&module.maintenance)await run(()=>module.maintenance!(env,manifest));}
     if(failures.length)throw new Error('One or more scheduled admin services failed; independent services were still processed.');
   },async queue(batch:MessageBatch<unknown>,env:AdminEnv){const module=queues.find(m=>m.queue!.name===batch.queue);if(!module||!manifest.modules.includes(module.id)&&!module.queue!.retainWhenDisabled)throw new Error('Queue is not registered for this installation.');await module.queue!.handle(batch,env,manifest);}};
@@ -156,7 +164,7 @@ async function api(request: Request, env: AdminEnv, manifest: AdminManifest, dem
     let themeStatus:BootstrapResponse['themeStatus']=theme?'installation':'default';
     if(manifest.backend){try{const status=await harnessRequest(manifest,env,'status');if(status.theme){theme=status.theme;themeStatus='website';}else if(!theme)themeStatus='unavailable';}catch{if(!theme)themeStatus='unavailable';}}
     const schedulingAllowed = user && !user.webmaster && manifest.modules.includes('scheduling') ? await hasSchedulingAccess(env.DB, manifest.site.id, user) : false;
-    return json<BootstrapResponse>({webmasterEnabled:manifest.modules.includes('webmaster'),manifest, theme, themeStatus, user, accountAuth:await accounts.capabilities(user), passwordLogin:passwordReady(env), emailLoginConfigured:!!env.AUTH_EMAIL && !!env.AUTH_FROM && !accounts.enabled, privateLocalSignIn:local(manifest,env) && !demo && !passwordReady(env) && !accounts.enabled && !env.AUTH_EMAIL, localDemo: demo && (!manifest.backend || isLoopback(manifest.backend.origin)), connected:!!manifest.backend, modules: enabled.filter(x => user && (x.id === 'scheduling' ? schedulingAllowed : userCan(user, x.permission))), capabilities: user ? ['leads','analytics','settings','access','activity'].filter(x => x==='settings'&&manifest.modules.includes('webmaster')||userCan(user, ({leads:'leads:read',analytics:'analytics:read',settings:'settings:write',access:'access:read',activity:'activity:read'} as Record<string,Permission>)[x])) : []});
+    return json<BootstrapResponse>({searchConsoleEnabled:manifest.modules.includes('search-console'),webmasterEnabled:manifest.modules.includes('webmaster'),manifest, theme, themeStatus, user, accountAuth:await accounts.capabilities(user), passwordLogin:passwordReady(env), emailLoginConfigured:!!env.AUTH_EMAIL && !!env.AUTH_FROM && !accounts.enabled, privateLocalSignIn:local(manifest,env) && !demo && !passwordReady(env) && !accounts.enabled && !env.AUTH_EMAIL, localDemo: demo && (!manifest.backend || isLoopback(manifest.backend.origin)), connected:!!manifest.backend, modules: enabled.filter(x => user && (x.id === 'scheduling' ? schedulingAllowed : userCan(user, x.permission))), capabilities: user ? ['leads','analytics','settings','access','activity'].filter(x => x==='settings'&&(manifest.modules.includes('webmaster')||manifest.modules.includes('search-console')&&userCan(user,'search-console:manage'))||userCan(user, ({leads:'leads:read',analytics:'analytics:read',settings:'settings:write',access:'access:read',activity:'activity:read'} as Record<string,Permission>)[x])) : []});
   }
   const publicAccount=await accounts.publicRoute(request,path);if(publicAccount)return publicAccount;
   if(accounts.enabled&&['/api/auth/request','/api/auth/confirm'].includes(path))throw new HttpError(404,'Not found');
@@ -227,6 +235,37 @@ async function api(request: Request, env: AdminEnv, manifest: AdminManifest, dem
     return json({ok:true},200,{'set-cookie':sessionCookie('',manifest,true)});
   }
   const site = manifest.site.id;
+  if(path==='/api/search-console'||path.startsWith('/api/search-console/')){
+    if(!manifest.modules.includes('search-console'))throw new HttpError(404,'Search Console is disabled');
+    const service=new SearchConsoleService(env,manifest),action=path.slice('/api/search-console'.length);
+    if(action==='/app'){
+      if(user.role!=='owner'||user.webmaster)throw new HttpError(403,'Only the installation owner can configure the Google application');
+      if(method==='GET')return json(await service.appSettings());
+      if(method==='POST'){const result=await service.saveApp(await body(request));await audit(env,user,'Updated Google Search Console application',manifest);return json(result);}
+      throw new HttpError(405,'Use GET or POST for Google application settings');
+    }
+    const managing=['/connect','/property','/disconnect','/sitemaps/submit'].includes(action);
+    if(managing){permission(user,'search-console:manage');if(method!=='POST')throw new HttpError(405,'Use POST for connection changes');}
+    else if(action==='/properties')permission(user,'search-console:manage');
+    else if(!(action==='/status'&&userCan(user,'search-console:manage')))permission(user,'analytics:read');
+    if(action==='/status'&&method==='GET')return json(await service.status());
+    if(action==='/properties'&&method==='GET'){permission(user,'search-console:manage');return json(await service.properties());}
+    if(action==='/report'&&(method==='GET'||method==='POST')){
+      const query=method==='POST'?await body(request,32768):{...searchWindow(url.searchParams.get('days')==='14'?14:28),type:url.searchParams.get('type')||'web',dimensions:[url.searchParams.get('dimension')||'date'],startRow:Number(url.searchParams.get('startRow')||0)};
+      return json(await service.report(query));
+    }
+    if(action==='/sitemaps'&&method==='GET')return json(await service.sitemaps());
+    if(action==='/inspect'&&method==='POST')return json(await service.inspect((await body(request)).url));
+    if(managing){
+      const data=await body(request);
+      if(action==='/connect'){if(data.manageSitemaps!==undefined&&typeof data.manageSitemaps!=='boolean')throw new HttpError(400,'Invalid sitemap management choice');return service.begin(user,data.manageSitemaps===true);}
+      if(action!=='/sitemaps/submit'&&(!Number.isInteger(data.revision)||Number(data.revision)<0))throw new HttpError(400,'A valid connection revision is required');
+      const result=action==='/property'?await service.select(data.property,data.revision):action==='/disconnect'?await service.disconnect(data.revision):await service.submitSitemap(data.url);
+      await audit(env,user,action==='/property'?'Selected Google Search Console property':action==='/disconnect'?'Disconnected Google Search Console':'Submitted Google Search Console sitemap',manifest);
+      return json(result);
+    }
+    throw new HttpError(404,'Search Console action not found');
+  }
   if(path==='/api/modules/webmaster'||path.startsWith('/api/modules/webmaster/')){
     if(!manifest.modules.includes('webmaster'))throw new HttpError(404,'Module is disabled');
     return webmasterRoute(env.DB,manifest,user,request,method==='POST'?await body(request,32768):undefined);
