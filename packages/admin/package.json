@@ -1,6 +1,6 @@
 {
   "name": "@tryvitris/website-admin-harness",
-  "version": "1.8.0",
+  "version": "1.9.0",
   "type": "module",
   "license": "MIT",
   "description": "Cloudflare business admin runtime and agent kit",
@@ -64,6 +64,10 @@
     "./search-console": {
       "types": "./dist/search-console.d.ts",
       "default": "./dist/search-console.js"
+    },
+    "./billing/managed": {
+      "types": "./dist/billing-setup/managed.d.ts",
+      "default": "./dist/billing-managed.js"
     }
   },
   "bin": {
@@ -114,7 +118,9 @@
     "dist/email-signup.d.ts",
     "docs/EMAIL-CAMPAIGNS.md",
     "dist/search-console.js",
-    "dist/search-console.d.ts"
+    "dist/search-console.d.ts",
+    "dist/billing-managed.js",
+    "dist/billing-setup"
   ],
   "dependencies": {
     "react": "^19.0.0",

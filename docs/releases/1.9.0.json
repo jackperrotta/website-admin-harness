@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "version": "1.9.0",
+  "packages": {
+    "runtime": {
+      "title": "Owner-managed Stripe plans, policies and production activation",
+      "notesScope": "package",
+      "notes": [
+        "Adds an optional reusable managed billing module with encrypted per-installation Test and Live connection profiles, legacy settings adoption and owner-only configuration in the packaged admin.",
+        "Adds reviewed fixed-price creation and existing-price approval, dedicated customer portal policy application, invoice due-day defaults and clearly labelled owner reviews of Stripe account-wide retry, email and tax settings.",
+        "Adds server-checked readiness and explicit live activation behind the installation deployment gate. Connection, catalog and policy changes clear activation; signed webhook delivery and scheduler health are tracked in optional additive billing migrations.",
+        "Preserves scoped customers and client grants, idempotent financial operations and the source-configured billing factory. Setup creates no customers or charges, and upgrades do not activate billing."
+      ]
+    },
+    "contracts": {
+      "title": "Align contracts with the managed billing release",
+      "notesScope": "package",
+      "notes": ["Version-only update to keep the stable release family aligned at 1.9.0. Existing public contract behavior is unchanged."]
+    },
+    "initializer": {
+      "title": "Initialize with the managed billing-capable runtime",
+      "notesScope": "package",
+      "notes": ["Version/dependency-only update pinning runtime 1.9.0. New installations still require explicit billing opt-in, private credentials, optional migrations and owner activation."]
+    }
+  }
+}

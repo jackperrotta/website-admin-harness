@@ -11,6 +11,7 @@ import {pathToFileURL} from 'node:url';
 import {createPortfolioFixture} from './client-portfolio-fixture.ts';
 import {createBillingPair} from './billing-fixture.ts';
 import {stripePair} from './stripe-fixture.ts';
+import {setupFixture} from './billing-setup-fixture.ts';
 import {accountFixture,syntheticPassword} from './accounts-fixture.ts';
 import {webmasterFixture,webmasterConfig} from './webmaster-fixture.ts';
 import {pairingFixture} from './pairing-fixture.ts';
@@ -49,6 +50,7 @@ test('packed npm packages scaffold an external installation, agent kit, and safe
   assert.ok(paths.includes('dist/billing-prototype.js')&&paths.includes('dist/billing-prototype.d.ts')&&paths.includes('dist/contracts/billing.d.ts'));
   assert.ok(paths.includes('dist/stripe-billing.js')&&paths.includes('dist/stripe-billing.d.ts')&&paths.includes('dist/stripe-billing-env.d.ts')&&paths.includes('dist/contracts/stripe-billing.d.ts'));
   assert.ok(paths.includes('modules/billing/migrations/0010_stripe_billing.sql')&&paths.includes('agent/refs/billing.md'));
+  for(const name of ['dist/billing-managed.js','dist/billing-setup/managed.d.ts','modules/billing/migrations/0011_billing_settings.sql','modules/billing/migrations/0012_billing_setup_health.sql'])assert.ok(paths.includes(name));
   assert.ok(!paths.includes('migrations/0010_stripe_billing.sql'));
   assert.ok(paths.includes('prototypes/billing/migrations/0001_billing_prototype.sql'));
   assert.ok(!paths.includes('migrations/0001_billing_prototype.sql'));
@@ -101,6 +103,8 @@ test('packed npm packages scaffold an external installation, agent kit, and safe
   try {assert.equal((await billing.seller.state()).audience,'seller');const client=await billing.client.state();assert.deepEqual(client.customers.map(c=>c.id),['alder']);assert.ok(client.invoices.every(i=>i.customerId==='alder'));} finally {await billing.dispose();}
   const stripe=await stripePair(join(tool,'node_modules/@tryvitris/website-admin-harness'));
   try{assert.equal((await stripe.seller.view()).setup.verified,true);assert.deepEqual((await stripe.client.view()).customers.map(c=>c.id),[stripe.customerId]);}finally{await stripe.dispose();}
+  const managed=await setupFixture({runtimeRoot:join(tool,'node_modules/@tryvitris/website-admin-harness'),config:{mode:'live'},liveGate:true});
+  try{await managed.prepare();assert.equal((await managed.status()).activated,false);assert.equal((await managed.view()).setup.liveWritesAllowed,false);assert.equal((await managed.action('activation',{enabled:true,confirmation:'ENABLE LIVE BILLING'})).status,200);assert.equal((await managed.action('activation',{enabled:false})).status,200);}finally{await managed.app.dispose();}
   execFileSync(process.execPath,['--input-type=module','-e',"import assert from 'node:assert/strict';import {billingPrototype,accountBillingPrototype} from '@tryvitris/website-admin-harness/prototypes/billing';import {billingPermissions,invoiceTotal} from '@tryvitris/website-admin-contracts';assert.equal(billingPrototype.id,'billing');assert.equal(accountBillingPrototype.id,'account-billing');assert.ok(billingPermissions.includes('billing:read'));assert.equal(invoiceTotal({lines:[{description:'Sample',quantity:2,unitAmount:100}]}),200);"],{cwd:tool,encoding:'utf8'});
   const accounts=await accountFixture(false,join(tool,'node_modules/@tryvitris/website-admin-harness'));try{await accounts.migrate();await accounts.seed('owner');await accounts.login('owner@example.test');assert.equal((await accounts.request('/api/auth/password/reset/request',{email:'owner@example.test'})).status,200);await accounts.tick();const token=await accounts.token('owner@example.test');assert.equal((await accounts.request('/api/auth/action/complete',{token,password:syntheticPassword,confirmPassword:syntheticPassword})).status,200);}finally{await accounts.app.dispose();}
   execFileSync(process.execPath,['--input-type=module','-e',"import assert from 'node:assert/strict'; import {SchedulingValidationError} from '@tryvitris/website-admin-contracts'; import {schedulingContractVersion,emptySchedulingConfig,parseSchedulingConfig} from '@tryvitris/website-admin-contracts/scheduling'; assert.equal(schedulingContractVersion,1); assert.equal(parseSchedulingConfig(emptySchedulingConfig()).mode,'disabled'); assert.throws(()=>parseSchedulingConfig({}),SchedulingValidationError);"],{cwd:tool,encoding:'utf8'});
@@ -128,6 +132,7 @@ test('packed npm packages scaffold an external installation, agent kit, and safe
   await writeFile(join(target,'modules/billing/index.ts'),"export {billingPrototype as default,accountBillingPrototype} from '@tryvitris/website-admin-harness/prototypes/billing';\n");
   await mkdir(join(target,'modules/stripe-billing'),{recursive:true});
   await writeFile(join(target,'modules/stripe-billing/index.ts'),"export {createStripeBilling,createBillingAccount,stripeApiVersion} from '@tryvitris/website-admin-harness/billing';\nexport type {StripeBillingConfig,StripeBillingEnv} from '@tryvitris/website-admin-harness/billing';\n");
+  await writeFile(join(target,'modules/stripe-billing/managed.ts'),"export {createManagedStripeBilling} from '@tryvitris/website-admin-harness/billing/managed';\n");
   execFileSync(process.execPath,[join(target,'node_modules/wrangler/bin/wrangler.js'),'deploy','--dry-run','--config','wrangler.local.jsonc','--outdir','dist'],{cwd:target,encoding:'utf8',stdio:['ignore','pipe','pipe']});
   assert.match(await readFile(join(target,'agent/WORKFLOW.md'),'utf8'),/Cloudflare/);
   assert.throws(()=>command(['init','--dir',target],root));
