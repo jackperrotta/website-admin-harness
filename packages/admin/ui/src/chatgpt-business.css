@@ -1,0 +1,18 @@
+.chatgpt-business { margin-block: 1rem; }
+.chatgpt-business-links { display: flex; align-items: center; flex-wrap: wrap; gap: 1rem; }
+.chatgpt-business ol { padding-inline-start: 1.4rem; }
+.chatgpt-business ol li + li { margin-block-start: .45rem; }
+.chatgpt-business-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.5rem; }
+.chatgpt-business-grid h3 { margin-block: 0 .6rem; }
+.chatgpt-business-grid dl { margin-block: 0 1rem; }
+.chatgpt-business-grid dl > div { padding-block: .45rem; border-bottom: 1px solid var(--line); }
+.chatgpt-business-grid dt { margin-block-start: 0; }
+.chatgpt-business-grid dd { margin-inline-start: 0; overflow-wrap: anywhere; }
+.chatgpt-business-grid dd button { margin-inline-start: .7rem; }
+.chatgpt-business-grid label { display: grid; gap: .35rem; }
+.chatgpt-business-grid li span { overflow-wrap: anywhere; }
+.chatgpt-business.ax-panel .chatgpt-business-grid { padding: 0 23px 22px; }
+.chatgpt-business .ax-ranks { padding: 0; }
+@media (max-width: 680px) {
+  .chatgpt-business-grid { grid-template-columns: minmax(0, 1fr); }
+}

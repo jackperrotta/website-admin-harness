@@ -1,5 +1,5 @@
 import React,{useEffect,useRef,useState} from 'react';
-import {isObject,userCan} from '../../../contracts/src/index.ts';
+import {chatgptSourceLabels,isObject,userCan} from '../../../contracts/src/index.ts';
 import type {BootstrapResponse,LeadRow,LeadFollowUp,LeadsResponse,LeadTeamMember} from '../../../contracts/src/index.ts';
 import './leads.css';
 
@@ -47,11 +47,11 @@ export function LeadsWorkspace({boot}:{boot:BootstrapResponse}){
         {rows.length?<div className="table-wrap"><table><thead><tr><th>Contact</th><th>Enquiry</th><th>Status</th><th>Follow-up</th></tr></thead><tbody>{rows.map(row=><tr key={row.id} aria-selected={selected?.id===row.id}><td><button id={'lead-'+encodeURIComponent(row.id)} className="contact-button" onClick={()=>choose(row)}>{row.name||'Website visitor'}</button><small>{row.email}</small></td><td><span className="message-preview">{row.message}</span><small>Received {row.created_at.slice(0,10)}</small></td><td><span className={'badge '+row.status}>{row.status}</span></td><td>{row.followUp?.assignedTo&&<small>{names.get(row.followUp.assignedTo)||'Assigned teammate'}</small>}{row.followUp?.completed?<span className="leads-complete">Complete</span>:row.followUp?.dueDate?<span className={due(row)?'leads-due':''}>{row.followUp.dueDate}{due(row)?' · Due':''}</span>:<span className="muted">No date set</span>}</td></tr>)}</tbody></table></div>:!loading&&<div className="empty"><h2>No enquiries to show.</h2><p>{query||queue!=='all'||mine||status!=='all'?'Try another search or clear your filters.':'New website enquiries appear here when forms are connected.'}</p></div>}
         {data?.pagination&&<nav className="leads-pagination" aria-label="Lead pages"><button className="secondary" disabled={loading||!cursors.length} onClick={()=>setCursors(values=>values.slice(0,-1))}>Previous</button><span>Page {cursors.length+1}</span><button className="secondary" disabled={loading||!data.pagination.nextCursor} onClick={()=>setCursors(values=>[...values,data.pagination!.nextCursor!])}>Next</button></nav>}
       </section>
-      {selected&&<LeadDetail key={mode+selected.id} row={selected} team={team} writable={mode!=='test'&&canWrite&&data?.writable!==false} followUpsEnabled={!!data?.followUpsEnabled&&mode!=='test'} onDirty={value=>{dirty.current=value;}} onClose={()=>{const id=selected.id;choose(null);requestAnimationFrame(()=>document.getElementById('lead-'+encodeURIComponent(id))?.focus());}} onSaved={refresh}/>}
+      {selected&&<LeadDetail key={mode+selected.id} row={selected} showAttribution={mode!=='test'&&(!!boot.chatgptBusinessEnabled||selected.attribution_source!==undefined)} team={team} writable={mode!=='test'&&canWrite&&data?.writable!==false} followUpsEnabled={!!data?.followUpsEnabled&&mode!=='test'} onDirty={value=>{dirty.current=value;}} onClose={()=>{const id=selected.id;choose(null);requestAnimationFrame(()=>document.getElementById('lead-'+encodeURIComponent(id))?.focus());}} onSaved={refresh}/>}
     </div>
   </>;
 }
-function LeadDetail({row,team,writable,followUpsEnabled,onDirty,onClose,onSaved}:{row:LeadRow;team:LeadTeamMember[];writable:boolean;followUpsEnabled:boolean;onDirty:(value:boolean)=>void;onClose:()=>void;onSaved:()=>void}){
+function LeadDetail({row,showAttribution,team,writable,followUpsEnabled,onDirty,onClose,onSaved}:{row:LeadRow;showAttribution:boolean;team:LeadTeamMember[];writable:boolean;followUpsEnabled:boolean;onDirty:(value:boolean)=>void;onClose:()=>void;onSaved:()=>void}){
   const [saved,setSaved]=useState(row.followUp||empty),[draft,setDraft]=useState(row.followUp||empty),[status,setStatus]=useState(row.status),[busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState('');
   const heading=useRef<HTMLHeadingElement>(null),dirty=JSON.stringify(saved)!==JSON.stringify(draft);
   useEffect(()=>{heading.current?.focus();},[]);
@@ -62,6 +62,7 @@ function LeadDetail({row,team,writable,followUpsEnabled,onDirty,onClose,onSaved}
   let fields:Record<string,unknown>={};try{const value=JSON.parse(row.fields_json||'{}');if(value&&typeof value==='object'&&!Array.isArray(value))fields=value;}catch{}
   return <section className="panel leads-detail" aria-label="Lead details"><div className="panel-heading"><h2 ref={heading} tabIndex={-1}>{row.name||'Website visitor'}</h2><button className="text-button" onClick={onClose}>Close details</button></div><div className="leads-detail-body">
     <a href={'mailto:'+row.email}>{row.email}</a>{row.phone&&<p>Phone: {row.phone}</p>}<p className="lead-message">{row.message}</p>
+    {showAttribution&&<p className="helper">Website attribution · {row.attribution_source ? chatgptSourceLabels[row.attribution_source] : 'Unavailable'}</p>}
     {!!Object.keys(fields).length&&<details><summary>Submitted fields</summary><dl>{Object.entries(fields).map(([key,value])=><React.Fragment key={key}><dt>{key}</dt><dd>{Array.isArray(value)?value.join(', '):String(value)}</dd></React.Fragment>)}</dl></details>}
     {row.notification_policy==='dashboard-only'?<p className="helper">Saved in your admin. Email notifications are disabled.</p>:row.notification_status&&<p className="helper">Notification: {row.notification_status}{row.notification_error?' · '+row.notification_error:''}. {row.status==='test'?'Test notification captured; no customer email is sent.':'Provider acceptance does not confirm inbox delivery.'}</p>}
     {error&&<div className="alert" role="alert">{error}{followUpsEnabled&&<button className="text-button" disabled={busy} onClick={()=>{if(!dirty||window.confirm('Replace your draft with the latest saved follow-up?'))void reload();}}>Reload saved follow-up</button>}</div>}

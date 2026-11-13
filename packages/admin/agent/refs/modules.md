@@ -22,4 +22,6 @@ New module scaffolds use `modules/<slug>/index.ts` with `satisfies AdminModule`.
 
 `search-console` is a reserved built-in optional connection. It appears in Settings and Analytics without a new navigation section. Read `refs/search-console.md` for OAuth secrets, the additive migration, website verification and permission/data limits.
 
+`chatgpt-business` is a reserved built-in optional module. It appears in the installation owner’s Settings and adds a report in Analytics. Read `refs/chatgpt-business.md` for the public profile handoff and migration.
+
 The optional `email-campaigns` export registers narrowly scoped exact public routes and a named native feedback queue. Public routes declare allowed methods and implement purpose-specific authentication. Only explicitly retained opt-out/assets/feedback remain when sending is disabled; this grants no administrative surface. Queue names are exact, unique installation-owned registrations. Preserve both `scheduled` and `queue` in wrappers. Read `refs/email-campaigns.md` before setup.

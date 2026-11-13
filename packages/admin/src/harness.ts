@@ -1,8 +1,8 @@
-import {isObject, isLeadRow, isLeadFollowUp, isLeadPagination, isAnalyticsRow, isWebsiteTheme, type LeadFollowUp, type WebsiteTheme, type AdminManifest, type LeadsResponse, type AnalyticsResponse, type MutationResponse} from '../../contracts/src/index.ts';
+import {isObject, isLeadRow, isLeadFollowUp, isLeadPagination, isAnalyticsRow, isChatGPTAttribution, isWebsiteTheme, type LeadFollowUp, type WebsiteTheme, type AdminManifest, type LeadsResponse, type AnalyticsResponse, type MutationResponse} from '../../contracts/src/index.ts';
 interface BackendIdentity {schemaVersion: 1; installationId: string; tenantId: string; siteOrigin: string}
 interface StatusResponse extends BackendIdentity {scopes: string[]; theme?: WebsiteTheme | null}
 interface HarnessResponses {status: StatusResponse; leads: LeadsResponse & BackendIdentity; analytics: AnalyticsResponse & BackendIdentity; 'leads/status': MutationResponse; 'leads/follow-up':MutationResponse & {followUp:LeadFollowUp}}
-type HarnessOptions = {days?: number; body?: unknown; mode?: 'test' | 'production'; leadQuery?:URLSearchParams};
+type HarnessOptions = {days?: number; chatgptAttribution?: boolean; body?: unknown; mode?: 'test' | 'production'; leadQuery?:URLSearchParams};
 export interface HarnessEnv {HARNESS_API_TOKEN?:string;HARNESS_SERVICE?:Pick<Fetcher, 'fetch'>}
 export class HarnessError extends Error {status: number; constructor(status:number,message:string){super(message);this.status=status;}}
 export function harnessRequest<R extends keyof HarnessResponses>(manifest: AdminManifest, env: HarnessEnv, resource: R, options?: HarnessOptions): Promise<HarnessResponses[R]>;
@@ -11,6 +11,7 @@ export async function harnessRequest(manifest: AdminManifest, env: HarnessEnv, r
   if(!env.HARNESS_API_TOKEN || !/^[a-zA-Z0-9_-]{32,200}$/.test(env.HARNESS_API_TOKEN))throw new HarnessError(503,'The website connection credential is missing. Ask your administrator to finish setup.');
   const path=`/api/admin/v1/${encodeURIComponent(manifest.backend.tenantId)}/${resource}`;
   const url=new URL(path,manifest.backend.origin);if(options.days)url.searchParams.set('days',String(options.days));
+  if(resource==='analytics'&&options.chatgptAttribution)url.searchParams.set('attribution','chatgpt');
   if(resource==='leads'&&options.mode==='test')url.searchParams.set('mode','test');
   if(resource==='leads'&&options.mode!=='test'&&options.leadQuery)for(const key of ['limit','q','status','queue','assignee','cursor','id']){const value=options.leadQuery.get(key);if(value!==null)url.searchParams.set(key,value);}
   const request=new Request(url,{method:options.body===undefined?'GET':'POST',redirect:'manual',signal:AbortSignal.timeout(12000),headers:{authorization:`Bearer ${env.HARNESS_API_TOKEN}`,'x-vitris-installation':manifest.installationId,'x-vitris-site-origin':manifest.site.origin,...(options.body===undefined?{}:{'content-type':'application/json'})},...(options.body===undefined?{}:{body:JSON.stringify(options.body)})});
@@ -58,7 +59,8 @@ export async function harnessRequest(manifest: AdminManifest, env: HarnessEnv, r
     const days=data.days===undefined?(options.days??14):data.days;
     if (!data.rows.every(isAnalyticsRow) || typeof timezone !== 'string' || typeof days !== 'number' || !Number.isInteger(days) || days < 1) throw new HarnessError(502, 'Website analytics response is invalid');
     if(data.previousRows!==undefined&&(!Array.isArray(data.previousRows)||data.previousRows.length>200||!data.previousRows.every(isAnalyticsRow)))throw new HarnessError(502,'Website comparison analytics response is invalid');
-    return {...data, ...identity, source: 'connected', rows: data.rows, previousRows:data.previousRows as AnalyticsResponse['previousRows'], timezone, days};
+    const chatgptAttribution = options.chatgptAttribution && isChatGPTAttribution(data.chatgptAttribution, options.days ?? days) ? data.chatgptAttribution : undefined;
+    return {...data, ...identity, source: 'connected', rows: data.rows, previousRows:data.previousRows as AnalyticsResponse['previousRows'], timezone, days, chatgptAttribution};
   }
   if (!data.rows.every(isLeadRow) || (data.writable !== undefined && typeof data.writable !== 'boolean') || (data.message !== undefined && typeof data.message !== 'string') || (data.mode !== undefined && typeof data.mode !== 'string')) throw new HarnessError(502, 'Website lead response is invalid');
   if(data.pagination!==undefined&&!isLeadPagination(data.pagination)||data.followUpsEnabled!==undefined&&typeof data.followUpsEnabled!=='boolean'||data.truncated!==undefined&&typeof data.truncated!=='boolean')throw new HarnessError(502,'Website lead capabilities are invalid');

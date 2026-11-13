@@ -18,6 +18,7 @@ import {CalendarError, type CalendarEnv} from './scheduling/calendars/types.ts';
 import {SearchConsoleService} from './search-console/service.ts';
 import {searchWindow} from './search-console/query.ts';
 import {SearchConsoleError,type SearchConsoleEnv} from './search-console/types.ts';
+import {chatgptBusinessModule, chatgptBusinessAvailable, readChatGPTBusinessStatus, isChatGPTBusinessStatusInput, saveChatGPTBusinessStatus} from './chatgpt-business.ts';
 
 interface EmailBinding {send(message: {to: string; from: string; subject: string; text: string}): Promise<unknown>}
 export interface AdminEnv extends HarnessEnv, CalendarEnv, BookingEnv, AccountEnv, SignOnEnv, SearchConsoleEnv {
@@ -94,7 +95,7 @@ async function seedDemo(env: AdminEnv, manifest: AdminManifest) {
 
 export function createAdmin(input: unknown, options: {modules?: AdminModule[]} = {}) {
   const manifest = parseManifest(input);
-  const modules = [workQueueModule, schedulingModule, webmasterModule, {id:'search-console',version:1,label:'Google Search Console',permission:'analytics:read' as const,description:'Google search performance and indexing connection'}, ...(options.modules || [])]; validateModules(manifest, modules);
+  const modules = [workQueueModule, schedulingModule, webmasterModule, chatgptBusinessModule, {id:'search-console',version:1,label:'Google Search Console',permission:'analytics:read' as const,description:'Google search performance and indexing connection'}, ...(options.modules || [])]; validateModules(manifest, modules);
   const hooks=(options.modules||[]).flatMap(module=>(module.hooks||[]).map(hook=>({...hook,moduleId:module.id})));
   if(hooks.some(h=>!new RegExp(`^/api/modules/${h.moduleId}/hooks/[a-z][a-z0-9-]*$`).test(h.path))||new Set(hooks.map(h=>h.path)).size!==hooks.length)throw new Error('Module hooks need unique exact paths within their own hooks namespace');
   const publicRoutes=(options.modules||[]).flatMap(module=>(module.publicRoutes||[]).map(route=>({...route,moduleId:module.id})));
@@ -164,7 +165,7 @@ async function api(request: Request, env: AdminEnv, manifest: AdminManifest, dem
     let themeStatus:BootstrapResponse['themeStatus']=theme?'installation':'default';
     if(manifest.backend){try{const status=await harnessRequest(manifest,env,'status');if(status.theme){theme=status.theme;themeStatus='website';}else if(!theme)themeStatus='unavailable';}catch{if(!theme)themeStatus='unavailable';}}
     const schedulingAllowed = user && !user.webmaster && manifest.modules.includes('scheduling') ? await hasSchedulingAccess(env.DB, manifest.site.id, user) : false;
-    return json<BootstrapResponse>({searchConsoleEnabled:manifest.modules.includes('search-console'),webmasterEnabled:manifest.modules.includes('webmaster'),manifest, theme, themeStatus, user, accountAuth:await accounts.capabilities(user), passwordLogin:passwordReady(env), emailLoginConfigured:!!env.AUTH_EMAIL && !!env.AUTH_FROM && !accounts.enabled, privateLocalSignIn:local(manifest,env) && !demo && !passwordReady(env) && !accounts.enabled && !env.AUTH_EMAIL, localDemo: demo && (!manifest.backend || isLoopback(manifest.backend.origin)), connected:!!manifest.backend, modules: enabled.filter(x => user && (x.id === 'scheduling' ? schedulingAllowed : userCan(user, x.permission))), capabilities: user ? ['leads','analytics','settings','access','activity'].filter(x => x==='settings'&&(manifest.modules.includes('webmaster')||manifest.modules.includes('search-console')&&userCan(user,'search-console:manage'))||userCan(user, ({leads:'leads:read',analytics:'analytics:read',settings:'settings:write',access:'access:read',activity:'activity:read'} as Record<string,Permission>)[x])) : []});
+    return json<BootstrapResponse>({chatgptBusinessEnabled:manifest.modules.includes(chatgptBusinessModule.id),searchConsoleEnabled:manifest.modules.includes('search-console'),webmasterEnabled:manifest.modules.includes('webmaster'),manifest:{...manifest,chatgptBusiness:undefined}, theme, themeStatus, user, accountAuth:await accounts.capabilities(user), passwordLogin:passwordReady(env), emailLoginConfigured:!!env.AUTH_EMAIL && !!env.AUTH_FROM && !accounts.enabled, privateLocalSignIn:local(manifest,env) && !demo && !passwordReady(env) && !accounts.enabled && !env.AUTH_EMAIL, localDemo: demo && (!manifest.backend || isLoopback(manifest.backend.origin)), connected:!!manifest.backend, modules: enabled.filter(x => user && (x.id === 'scheduling' ? schedulingAllowed : userCan(user, x.permission))), capabilities: user ? ['leads','analytics','settings','access','activity'].filter(x => x==='settings'&&(manifest.modules.includes('webmaster')||manifest.modules.includes('search-console')&&userCan(user,'search-console:manage'))||userCan(user, ({leads:'leads:read',analytics:'analytics:read',settings:'settings:write',access:'access:read',activity:'activity:read'} as Record<string,Permission>)[x])) : []});
   }
   const publicAccount=await accounts.publicRoute(request,path);if(publicAccount)return publicAccount;
   if(accounts.enabled&&['/api/auth/request','/api/auth/confirm'].includes(path))throw new HttpError(404,'Not found');
@@ -235,6 +236,21 @@ async function api(request: Request, env: AdminEnv, manifest: AdminManifest, dem
     return json({ok:true},200,{'set-cookie':sessionCookie('',manifest,true)});
   }
   const site = manifest.site.id;
+  if (path === '/api/settings/chatgpt-business') {
+    if (!manifest.modules.includes(chatgptBusinessModule.id) || !manifest.chatgptBusiness) throw new HttpError(404, 'Businesses in ChatGPT is disabled');
+    if (user.role !== 'owner' || user.webmaster) throw new HttpError(403, 'Only the installation owner can manage this setup');
+    permission(user, chatgptBusinessModule.permission);
+    if (method !== 'GET' && method !== 'POST') throw new HttpError(405, 'Method not allowed');
+    if (!await chatgptBusinessAvailable(env.DB)) throw new HttpError(503, 'Apply the reviewed Businesses in ChatGPT migration to enable setup');
+    const {profile} = manifest.chatgptBusiness;
+    if (method === 'GET') return json({profile, status: await readChatGPTBusinessStatus(env.DB, manifest)});
+    const input = await body(request, 1024);
+    if (!isChatGPTBusinessStatusInput(input)) throw new HttpError(400, 'Enter valid statuses and a last-checked date');
+    const status = await saveChatGPTBusinessStatus(env.DB, manifest, input);
+    if (!status) throw new HttpError(409, 'Setup status changed in another session. Reload the saved status before editing it.');
+    await audit(env, user, 'Updated Businesses in ChatGPT status', manifest);
+    return json({profile, status});
+  }
   if(path==='/api/search-console'||path.startsWith('/api/search-console/')){
     if(!manifest.modules.includes('search-console'))throw new HttpError(404,'Search Console is disabled');
     const service=new SearchConsoleService(env,manifest),action=path.slice('/api/search-console'.length);
@@ -314,7 +330,8 @@ async function api(request: Request, env: AdminEnv, manifest: AdminManifest, dem
   }
   if (path === '/api/analytics' && method === 'GET') {
     permission(user,'analytics:read'); const days = url.searchParams.get('days') === '30' ? 30 : 14;
-    if(manifest.backend)return json(await harnessRequest(manifest,env,'analytics',{days}));
+    const chatgptAttribution = manifest.modules.includes(chatgptBusinessModule.id) && url.searchParams.get('attribution') === 'chatgpt';
+    if(manifest.backend)return json(await harnessRequest(manifest,env,'analytics',{days,chatgptAttribution}));
     const result = await env.DB.prepare("SELECT day,views,visitors,enquiries FROM analytics_daily WHERE site_id=? AND day>=date('now',?) ORDER BY day").bind(site,`-${days-1} days`).all<AnalyticsRow>();
     return json<AnalyticsResponse>({rows:result.results, source:demo?'synthetic':'not-connected', timezone:'UTC', days});
   }

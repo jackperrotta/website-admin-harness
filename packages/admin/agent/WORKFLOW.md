@@ -17,6 +17,8 @@ Read `refs/harness.md` before changing backend connections or data adapters. A c
 
 Read `refs/search-console.md` before enabling Google Search Console, changing its OAuth/property/website verification setup, or using its reports in analytics and agent care. Google search data and website traffic have separate dates, scopes and metrics.
 
+Read `refs/chatgpt-business.md` before enabling Businesses in ChatGPT or changing its Settings, public profile, or website attribution connection.
+
 Read `refs/webmaster.md` before enabling or changing a Managed by Webmaster relationship, its scoped accounts, revocation or optional client billing. Management and billing remain independent.
 
 Read `refs/leads.md` for lead follow-up, full-history search, installation scoping, compatible backend migrations and read-only connections.

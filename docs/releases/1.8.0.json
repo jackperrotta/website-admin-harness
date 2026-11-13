@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "version": "1.8.0",
+  "packages": {
+    "runtime": {
+      "title": "Businesses in ChatGPT onboarding and website attribution",
+      "notesScope": "package",
+      "notes": [
+        "Adds opt-in Businesses in ChatGPT Settings for installation owners, with an inspected public profile, a copy-ready inquiry URL, Business Hub guidance, and revision-checked onboarding status in migration 0014.",
+        "Adds ChatGPT and ChatGPT paid landing pageviews, top landing pages, and accepted inquiries in Analytics through the existing scoped website connection. Leads shows optional website attribution, and older backends retain their existing analytics and lead views."
+      ]
+    },
+    "contracts": {
+      "title": "ChatGPT onboarding and attribution contracts",
+      "notesScope": "package",
+      "notes": [
+        "Adds the public-profile manifest fields, owner-only onboarding capability, status types, versioned attribution report and optional production lead source. Report validation preserves the difference between missing values, unavailable storage, and zero counts."
+      ]
+    },
+    "initializer": {
+      "title": "Initialize with the ChatGPT-ready admin runtime",
+      "notesScope": "package",
+      "notes": [
+        "Updates the initializer version and pins runtime 1.8.0. This is a version/dependency-only initializer change. New installations leave Businesses in ChatGPT disabled until explicitly configured."
+      ]
+    }
+  }
+}

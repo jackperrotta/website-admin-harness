@@ -38,6 +38,7 @@ test('packed npm packages scaffold an external installation, agent kit, and safe
   for(const packed of [runtime,initializer,contracts])await assertSafeArchive(join(root,packed.filename));
   const paths=runtime.files.map(x=>x.path);
   assert.ok(paths.includes('dist/worker.js')&&paths.includes('dist/client/index.html')&&paths.includes('agent/WORKFLOW.md'));
+  for (const file of ['migrations/0014_chatgpt_business.sql', 'agent/refs/chatgpt-business.md']) assert.ok(paths.includes(file), 'Missing packed ChatGPT Business file: '+file);
   for(const file of ['migrations/0012_search_console.sql','migrations/0013_search_console_app.sql','dist/search-console.js','dist/search-console.d.ts','dist/search-console-env.d.ts','dist/contracts/search-console.d.ts','agent/refs/search-console.md'])assert.ok(paths.includes(file),'Missing packed Search Console file: '+file);
   assert.ok(paths.includes('dist/client-portfolio.js') && paths.includes('dist/client-portfolio.d.ts'));
   assert.ok(paths.includes('dist/client-onboarding.js') && paths.includes('dist/client-onboarding.d.ts') && paths.includes('dist/contracts/client-onboarding.d.ts'));

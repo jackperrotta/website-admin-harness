@@ -15,11 +15,11 @@ export * from './pairing.ts';
 export * from './signon.ts';
 export const contractVersion = 1;
 export const coreSections = ['overview', 'leads', 'analytics', 'settings', 'access', 'activity'] as const;
-export const permissions = ['leads:read', 'leads:write', 'analytics:read', 'search-console:manage', 'settings:write', 'access:read', 'access:write', 'activity:read', 'tasks:read', 'tasks:write', ...schedulingPermissions, ...clientPortfolioPermissions, ...clientOnboardingPermissions, ...billingPermissions, ...emailCampaignPermissions] as const;
+export const permissions = ['leads:read', 'leads:write', 'analytics:read', 'search-console:manage', 'chatgpt-business:manage', 'settings:write', 'access:read', 'access:write', 'activity:read', 'tasks:read', 'tasks:write', ...schedulingPermissions, ...clientPortfolioPermissions, ...clientOnboardingPermissions, ...billingPermissions, ...emailCampaignPermissions] as const;
 export type Permission = typeof permissions[number];
 export type Role = 'owner' | 'administrator' | 'editor' | 'analyst';
 export const roles: Record<Role, readonly Permission[]> = {
-  owner: permissions, administrator: permissions.filter(p => p!=='access:write' && !(clientPortfolioPermissions as readonly string[]).includes(p) && !(clientOnboardingPermissions as readonly string[]).includes(p) && !(billingPermissions as readonly string[]).includes(p) && !(emailCampaignPermissions as readonly string[]).includes(p)),
+  owner: permissions, administrator: permissions.filter(p => p!=='access:write' && p!=='chatgpt-business:manage' && !(clientPortfolioPermissions as readonly string[]).includes(p) && !(clientOnboardingPermissions as readonly string[]).includes(p) && !(billingPermissions as readonly string[]).includes(p) && !(emailCampaignPermissions as readonly string[]).includes(p)),
   editor: ['leads:read', 'leads:write', 'activity:read', 'tasks:read', 'tasks:write'],
   analyst: ['analytics:read', 'activity:read'],
 };
@@ -35,6 +35,7 @@ export interface AdminManifest {
   modules: string[];
   backend?: {provider:'vitris-harness';origin:string;tenantId:string};
   theme?: WebsiteTheme;
+  chatgptBusiness?: {profile: ChatGPTBusinessProfile};
 }
 export const websiteColorKeys = ['colorBg','colorText','colorMuted','colorAccent','colorAccentText','colorSurface','colorSurface2','colorBorder','colorFocus'] as const;
 export type WebsiteTheme = Partial<Record<typeof websiteColorKeys[number], string>>;
@@ -66,11 +67,46 @@ export interface BootstrapResponse {
   privateLocalSignIn?: boolean;
   webmasterEnabled?: boolean;
   searchConsoleEnabled?: boolean;
+  chatgptBusinessEnabled?: boolean;
 }
+export const chatgptSources = ['chatgpt', 'chatgpt_paid'] as const;
+export type ChatGPTSource = typeof chatgptSources[number];
+export function isChatGPTSource(value: unknown): value is ChatGPTSource {
+  return value === 'chatgpt' || value === 'chatgpt_paid';
+}
+export const chatgptSourceLabels: Record<ChatGPTSource, string> = {chatgpt: 'ChatGPT', chatgpt_paid: 'ChatGPT paid'};
+export interface ChatGPTAttribution {
+  version: 1;
+  days: number;
+  sources: {
+    source: ChatGPTSource;
+    landingPageviews?: number | null;
+    landingPages?: {path: string; landingPageviews: number}[] | null;
+    acceptedInquiries?: number | null;
+  }[];
+}
+export interface ChatGPTBusinessProfile {
+  name: string; website: string; inquiryUrl: string;
+  description: string | null; telephone: string | null; email: string | null; address: string | null;
+}
+export const chatgptBusinessStatuses = {
+  claim: ['not_started', 'pending', 'approved', 'needs_attention'],
+  verification: ['not_started', 'pending', 'approved', 'needs_attention'],
+  agent: ['not_started', 'draft', 'published', 'unavailable'],
+} as const;
+export interface ChatGPTBusinessStatus {
+  claim: typeof chatgptBusinessStatuses.claim[number];
+  verification: typeof chatgptBusinessStatuses.verification[number];
+  agent: typeof chatgptBusinessStatuses.agent[number];
+  lastChecked: string | null;
+  revision: number;
+}
+export interface ChatGPTBusinessResponse {profile: ChatGPTBusinessProfile; status: ChatGPTBusinessStatus}
 export type DataSource = 'synthetic' | 'connected' | 'not-connected';
 export interface LeadRow {
   id: string; name: string; email: string; message: string; status: string; created_at: string;
   source?: string | null; phone?: string | null; fields_json?: string | null;
+  attribution_source?: ChatGPTSource | null;
   notification_policy?: string | null; notification_status?: string | null; notification_error?: string | null;
   followUp?: LeadFollowUp;
 }
@@ -91,7 +127,7 @@ export type AnalyticsBreakdown = typeof analyticsBreakdownKeys[number];
 export interface AnalyticsItem {key: string; n: number}
 export type AnalyticsRow = {day: string; views: number; visitors: number; enquiries: number} & Partial<Record<typeof analyticsMetricKeys[number],number>> & Partial<Record<AnalyticsBreakdown,string>>;
 export interface LeadsResponse {rows: LeadRow[]; source: DataSource; writable?: boolean; message?: string; mode?: string; followUpsEnabled?:boolean; pagination?:LeadPagination; truncated?:boolean}
-export interface AnalyticsResponse {rows: AnalyticsRow[]; previousRows?: AnalyticsRow[]; source: DataSource; timezone: string; days: number; generatedAt?: string}
+export interface AnalyticsResponse {rows: AnalyticsRow[]; previousRows?: AnalyticsRow[]; source: DataSource; timezone: string; days: number; generatedAt?: string; chatgptAttribution?: ChatGPTAttribution}
 export interface SettingsResponse {notification_email: string; revision: number}
 export interface AccessRow extends User {active: number}
 export interface AccountCapabilities {enabled:boolean;emailReady:boolean;setupAvailable:boolean;emailVerified:boolean;canInvite:boolean}
@@ -111,7 +147,21 @@ export function isObject(value: unknown): value is Record<string, unknown> {
 export function isLeadRow(value: unknown): value is LeadRow {
   if (!isObject(value)) return false;
   return ['id', 'name', 'email', 'message', 'status', 'created_at'].every(key => typeof value[key] === 'string') &&
-    ['source', 'phone', 'fields_json', 'notification_policy', 'notification_status', 'notification_error'].every(key => value[key] === undefined || value[key] === null || typeof value[key] === 'string') && (value.followUp===undefined||isLeadFollowUp(value.followUp));
+    ['source', 'phone', 'fields_json', 'notification_policy', 'notification_status', 'notification_error'].every(key => value[key] === undefined || value[key] === null || typeof value[key] === 'string') &&
+    (value.attribution_source == null || isChatGPTSource(value.attribution_source)) && (value.followUp===undefined||isLeadFollowUp(value.followUp));
+}
+export function isChatGPTAttribution(value: unknown, days: number): value is ChatGPTAttribution {
+  const count = (n: unknown) => typeof n === 'number' && Number.isSafeInteger(n) && n >= 0;
+  if (!isObject(value) || value.version !== 1 || value.days !== days || !Array.isArray(value.sources) || value.sources.length > chatgptSources.length) return false;
+  const seen = new Set<ChatGPTSource>();
+  return value.sources.every(row => {
+    if (!isObject(row) || !isChatGPTSource(row.source) || seen.has(row.source)) return false;
+    seen.add(row.source);
+    return (row.landingPageviews == null || count(row.landingPageviews)) &&
+      (row.acceptedInquiries == null || count(row.acceptedInquiries)) &&
+      (row.landingPages == null || Array.isArray(row.landingPages) && row.landingPages.length <= 10 && row.landingPages.every(page =>
+        isObject(page) && typeof page.path === 'string' && page.path.startsWith('/') && page.path.length <= 2048 && count(page.landingPageviews)));
+  });
 }
 export function isAnalyticsRow(value: unknown): value is AnalyticsRow {
   if (!isObject(value) || typeof value.day !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value.day)) return false;
@@ -154,6 +204,23 @@ export function parseManifest(value: unknown): AdminManifest {
   if (!Array.isArray(v.modules) || v.modules.length > 20) throw new Error('Invalid modules');
   const modules = v.modules.map(x => id(x, 'module ID'));
   if (new Set(modules).size !== modules.length) throw new Error('Duplicate module');
+  const siteOrigin = origin(site.origin, 'website origin');
+  let chatgptBusiness: AdminManifest['chatgptBusiness'];
+  if (v.chatgptBusiness !== undefined) {
+    const config = object(v.chatgptBusiness);
+    const p = object(config.profile);
+    const website = origin(p.website, 'ChatGPT business website');
+    const inquiryUrl = new URL(text(p.inquiryUrl, 'ChatGPT inquiry URL', 2048));
+    if (website !== siteOrigin || inquiryUrl.origin !== siteOrigin || inquiryUrl.username || inquiryUrl.password ||
+        inquiryUrl.search || inquiryUrl.hash || inquiryUrl.protocol !== 'https:') throw new Error('ChatGPT business URLs must match the exact public HTTPS website');
+    const optional = (value: unknown, name: string) => value == null ? null : text(value, name, 1000);
+    chatgptBusiness = {profile: {
+      name: text(p.name, 'ChatGPT business name'), website, inquiryUrl: inquiryUrl.href,
+      description: optional(p.description, 'ChatGPT business description'), telephone: optional(p.telephone, 'ChatGPT business telephone'),
+      email: optional(p.email, 'ChatGPT business email'), address: optional(p.address, 'ChatGPT business address'),
+    }};
+  }
+  if (modules.includes('chatgpt-business') && !chatgptBusiness) throw new Error('Provide the inspected public profile to enable Businesses in ChatGPT');
   if(v.theme!==undefined&&!isWebsiteTheme(v.theme))throw new Error('Invalid website theme colors');
   let backend:AdminManifest['backend'];
   if(v.backend!==undefined){
@@ -186,8 +253,8 @@ export function parseManifest(value: unknown): AdminManifest {
   return {
     schemaVersion: 1, installationId: id(v.installationId, 'installation ID'),
     business: {name: text(business.name, 'business name'), initials: text(business.initials, 'initials', 3)},
-    site: {id: id(site.id, 'site ID'), name: text(site.name, 'site name'), origin: origin(site.origin, 'website origin')},
-    adminOrigin: origin(v.adminOrigin, 'admin origin'), modules, ...(backend?{backend}:{}), ...(v.theme?{theme:v.theme as WebsiteTheme}:{}), ...(reportingPairing?{reportingPairing}:{}), ...(webmasterSignOn?{webmasterSignOn}:{}),
+    site: {id: id(site.id, 'site ID'), name: text(site.name, 'site name'), origin: siteOrigin},
+    adminOrigin: origin(v.adminOrigin, 'admin origin'), modules, ...(backend?{backend}:{}), ...(v.theme?{theme:v.theme as WebsiteTheme}:{}), ...(reportingPairing?{reportingPairing}:{}), ...(webmasterSignOn?{webmasterSignOn}:{}), ...(chatgptBusiness?{chatgptBusiness}:{}),
   };
 }
 export function validateModules(manifest: AdminManifest, modules: ModuleDefinition[]) {
